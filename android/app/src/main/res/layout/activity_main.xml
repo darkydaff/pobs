@@ -1,0 +1,355 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:id="@+id/rootContainer"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="#09090B">
+
+    <!-- Non-Squishing Aspect-Ratio Preserving SurfaceView with Pinch-to-Zoom -->
+    <com.darkydaff.pobs.ui.AutoFitSurfaceView
+        android:id="@+id/previewSurfaceView"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="center" />
+
+    <!-- Center Pause Standby Placeholder -->
+    <LinearLayout
+        android:id="@+id/pauseOverlay"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="center"
+        android:orientation="vertical"
+        android:gravity="center"
+        android:background="@drawable/bg_studio_card"
+        android:padding="22dp"
+        android:visibility="gone">
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Camera Paused"
+            android:textColor="#FFFFFF"
+            android:textSize="16sp"
+            android:fontFamily="sans-serif-medium"
+            android:layout_marginBottom="4dp" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Video output is muted"
+            android:textColor="#71717A"
+            android:textSize="12sp"
+            android:layout_marginBottom="16dp" />
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/btnResumeFromOverlay"
+            android:layout_width="wrap_content"
+            android:layout_height="38dp"
+            android:text="Resume Stream"
+            android:textSize="12sp"
+            android:textColor="#FFFFFF"
+            app:icon="@drawable/ic_play"
+            app:iconTint="#FFFFFF"
+            app:backgroundTint="#22C55E"
+            app:cornerRadius="6dp" />
+    </LinearLayout>
+
+    <!-- Clean Studio Overlay (hidden automatically when entering Picture-in-Picture) -->
+    <LinearLayout
+        android:id="@+id/overlayControls"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:orientation="vertical"
+        android:fitsSystemWindows="true"
+        android:padding="16dp">
+
+        <!-- Top Status & Actions Floating Card -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="52dp"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:paddingHorizontal="14dp"
+            android:background="@drawable/bg_studio_card"
+            android:layout_marginBottom="12dp">
+
+            <!-- Live Status Dot -->
+            <View
+                android:id="@+id/statusDot"
+                android:layout_width="8dp"
+                android:layout_height="8dp"
+                android:background="@drawable/ic_launcher_background"
+                android:backgroundTint="#22C55E"
+                android:layout_marginEnd="8dp" />
+
+            <TextView
+                android:id="@+id/tvStreamBadge"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="LIVE"
+                android:textColor="#22C55E"
+                android:textSize="12sp"
+                android:textStyle="bold"
+                android:letterSpacing="0.05"
+                android:layout_marginEnd="12dp" />
+
+            <!-- Battery Icon & Percentage -->
+            <ImageView
+                android:id="@+id/ivBattery"
+                android:layout_width="18dp"
+                android:layout_height="18dp"
+                android:src="@drawable/ic_battery"
+                android:layout_marginEnd="4dp"
+                android:contentDescription="Battery Status" />
+
+            <TextView
+                android:id="@+id/tvBattery"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="85%"
+                android:textColor="#A1A1AA"
+                android:textSize="12sp"
+                android:fontFamily="sans-serif-medium" />
+
+            <!-- Zoom Badge Indicator -->
+            <TextView
+                android:id="@+id/tvZoomBadge"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="1.0x"
+                android:textColor="#F4F4F5"
+                android:textSize="11sp"
+                android:textStyle="bold"
+                android:background="#27272A"
+                android:paddingHorizontal="6dp"
+                android:paddingVertical="3dp"
+                android:layout_marginEnd="8dp" />
+
+            <!-- Stream Pause / Resume Button -->
+            <ImageButton
+                android:id="@+id/btnPauseStream"
+                android:layout_width="38dp"
+                android:layout_height="38dp"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                android:src="@drawable/ic_pause"
+                app:tint="#D4D4D8"
+                android:contentDescription="Pause or Resume Stream"
+                android:layout_marginEnd="4dp" />
+
+            <!-- PiP Button -->
+            <ImageButton
+                android:id="@+id/btnEnterPip"
+                android:layout_width="38dp"
+                android:layout_height="38dp"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                android:src="@drawable/ic_pip"
+                app:tint="#D4D4D8"
+                android:contentDescription="Picture in Picture"
+                android:layout_marginEnd="4dp" />
+
+            <!-- Settings Button -->
+            <ImageButton
+                android:id="@+id/btnOpenSettings"
+                android:layout_width="38dp"
+                android:layout_height="38dp"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                android:src="@drawable/ic_settings"
+                app:tint="#D4D4D8"
+                android:contentDescription="Settings" />
+
+        </LinearLayout>
+
+        <!-- Flexible Spacer to keep preview clear -->
+        <View
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="1" />
+
+        <!-- Bottom Controls Studio Card -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:background="@drawable/bg_studio_card"
+            android:padding="14dp">
+
+            <!-- Direct Format Selection: Resolution & FPS Chips -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:gravity="center_vertical"
+                android:layout_marginBottom="12dp">
+
+                <!-- Resolution Selector -->
+                <com.google.android.material.button.MaterialButtonToggleGroup
+                    android:id="@+id/toggleResolution"
+                    android:layout_width="0dp"
+                    android:layout_height="36dp"
+                    android:layout_weight="3"
+                    app:singleSelection="true"
+                    app:selectionRequired="true"
+                    android:layout_marginEnd="8dp">
+
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/btnRes720"
+                        style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+                        android:layout_width="0dp"
+                        android:layout_height="match_parent"
+                        android:layout_weight="1"
+                        android:text="720p"
+                        android:textSize="11sp"
+                        android:insetTop="0dp"
+                        android:insetBottom="0dp"
+                        android:textColor="#D4D4D8"
+                        app:strokeColor="#3F3F46" />
+
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/btnRes1080"
+                        style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+                        android:layout_width="0dp"
+                        android:layout_height="match_parent"
+                        android:layout_weight="1"
+                        android:text="1080p"
+                        android:textSize="11sp"
+                        android:insetTop="0dp"
+                        android:insetBottom="0dp"
+                        android:textColor="#D4D4D8"
+                        app:strokeColor="#3F3F46" />
+
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/btnRes4K"
+                        style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+                        android:layout_width="0dp"
+                        android:layout_height="match_parent"
+                        android:layout_weight="1"
+                        android:text="4K"
+                        android:textSize="11sp"
+                        android:insetTop="0dp"
+                        android:insetBottom="0dp"
+                        android:textColor="#D4D4D8"
+                        app:strokeColor="#3F3F46" />
+
+                </com.google.android.material.button.MaterialButtonToggleGroup>
+
+                <!-- FPS Selector -->
+                <com.google.android.material.button.MaterialButtonToggleGroup
+                    android:id="@+id/toggleFps"
+                    android:layout_width="0dp"
+                    android:layout_height="36dp"
+                    android:layout_weight="2"
+                    app:singleSelection="true"
+                    app:selectionRequired="true">
+
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/btnFps30"
+                        style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+                        android:layout_width="0dp"
+                        android:layout_height="match_parent"
+                        android:layout_weight="1"
+                        android:text="30 fps"
+                        android:textSize="11sp"
+                        android:insetTop="0dp"
+                        android:insetBottom="0dp"
+                        android:textColor="#D4D4D8"
+                        app:strokeColor="#3F3F46" />
+
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/btnFps60"
+                        style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+                        android:layout_width="0dp"
+                        android:layout_height="match_parent"
+                        android:layout_weight="1"
+                        android:text="60 fps"
+                        android:textSize="11sp"
+                        android:insetTop="0dp"
+                        android:insetBottom="0dp"
+                        android:textColor="#D4D4D8"
+                        app:strokeColor="#3F3F46" />
+
+                </com.google.android.material.button.MaterialButtonToggleGroup>
+
+            </LinearLayout>
+
+            <!-- Primary Actions Row: Flip Lens, Torch, Dim, QR -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="46dp"
+                android:orientation="horizontal"
+                android:gravity="center_vertical">
+
+                <!-- Flip Camera Lens Button -->
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/btnFlipCamera"
+                    android:layout_width="0dp"
+                    android:layout_height="match_parent"
+                    android:layout_weight="1"
+                    android:text="Front Camera"
+                    android:textSize="13sp"
+                    android:fontFamily="sans-serif-medium"
+                    android:textColor="#FFFFFF"
+                    app:icon="@drawable/ic_flip_camera"
+                    app:iconGravity="textStart"
+                    app:iconPadding="8dp"
+                    app:iconTint="#FFFFFF"
+                    app:cornerRadius="8dp"
+                    app:backgroundTint="#2563EB"
+                    android:layout_marginEnd="8dp" />
+
+                <!-- Torch Key Light Button (Square 46dp) -->
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/btnTorch"
+                    style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+                    android:layout_width="46dp"
+                    android:layout_height="match_parent"
+                    app:icon="@drawable/ic_flashlight"
+                    app:iconGravity="textStart"
+                    app:iconPadding="0dp"
+                    app:iconTint="#D4D4D8"
+                    app:cornerRadius="8dp"
+                    app:strokeColor="#3F3F46"
+                    app:backgroundTint="#27272A"
+                    android:contentDescription="Toggle Torch"
+                    android:layout_marginEnd="6dp" />
+
+                <!-- OLED Screen Dim Button -->
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/btnDimScreen"
+                    style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+                    android:layout_width="46dp"
+                    android:layout_height="match_parent"
+                    app:icon="@drawable/ic_dim"
+                    app:iconGravity="textStart"
+                    app:iconPadding="0dp"
+                    app:iconTint="#D4D4D8"
+                    app:cornerRadius="8dp"
+                    app:strokeColor="#3F3F46"
+                    app:backgroundTint="#27272A"
+                    android:contentDescription="Dim Screen"
+                    android:layout_marginEnd="6dp" />
+
+                <!-- QR Scanner Button -->
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/btnScanQr"
+                    style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+                    android:layout_width="46dp"
+                    android:layout_height="match_parent"
+                    app:icon="@drawable/ic_qr_scan"
+                    app:iconGravity="textStart"
+                    app:iconPadding="0dp"
+                    app:iconTint="#D4D4D8"
+                    app:cornerRadius="8dp"
+                    app:strokeColor="#3F3F46"
+                    app:backgroundTint="#27272A"
+                    android:contentDescription="Pair via QR" />
+
+            </LinearLayout>
+
+        </LinearLayout>
+
+    </LinearLayout>
+
+</FrameLayout>

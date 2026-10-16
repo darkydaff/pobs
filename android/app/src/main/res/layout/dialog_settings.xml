@@ -1,0 +1,164 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:background="#16161F"
+    android:padding="20dp">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical">
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Stream Settings"
+            android:textColor="#FFFFFF"
+            android:textSize="20sp"
+            android:textStyle="bold"
+            android:layout_marginBottom="18dp" />
+
+        <!-- Resolution Selector -->
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Resolution"
+            android:textColor="#AAAAAA"
+            android:textSize="13sp"
+            android:textStyle="bold"
+            android:layout_marginBottom="6dp" />
+
+        <RadioGroup
+            android:id="@+id/rgResolution"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:layout_marginBottom="16dp">
+
+            <RadioButton
+                android:id="@+id/rbRes1080"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="1080p (1920x1080) • Recommended"
+                android:textColor="#FFFFFF" />
+
+            <RadioButton
+                android:id="@+id/rbRes720"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="720p (1280x720) • Ultra-Low Latency"
+                android:textColor="#FFFFFF" />
+
+            <RadioButton
+                android:id="@+id/rbRes4K"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="4K (3840x2160) • High Fidelity"
+                android:textColor="#FFFFFF" />
+
+        </RadioGroup>
+
+        <!-- FPS Selector -->
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Frame Rate"
+            android:textColor="#AAAAAA"
+            android:textSize="13sp"
+            android:textStyle="bold"
+            android:layout_marginBottom="6dp" />
+
+        <RadioGroup
+            android:id="@+id/rgFps"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:layout_marginBottom="16dp">
+
+            <RadioButton
+                android:id="@+id/rbFps60"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="60 FPS"
+                android:textColor="#FFFFFF"
+                android:layout_marginEnd="20dp" />
+
+            <RadioButton
+                android:id="@+id/rbFps30"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="30 FPS"
+                android:textColor="#FFFFFF" />
+
+        </RadioGroup>
+
+        <!-- Latency / GOP Tuning: Keyframe interval & B-Frames -->
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Latency &amp; GOP Compression"
+            android:textColor="#AAAAAA"
+            android:textSize="13sp"
+            android:textStyle="bold"
+            android:layout_marginBottom="6dp" />
+
+        <RadioGroup
+            android:id="@+id/rgGop"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:layout_marginBottom="16dp">
+
+            <RadioButton
+                android:id="@+id/rbGop2Sec1B"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="2s Keyframe Interval + 1 B-Frame (Default)"
+                android:textColor="#FFFFFF" />
+
+            <RadioButton
+                android:id="@+id/rbGop1Sec0B"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="1s Keyframe Interval + 0 B-Frames (Zero Reordering Delay)"
+                android:textColor="#FFFFFF" />
+
+        </RadioGroup>
+
+        <!-- Ultra-Low Latency Mode (Spatial ISP vs Multi-Frame Temporal Denoise) -->
+        <com.google.android.material.switchmaterial.SwitchMaterial
+            android:id="@+id/switchUltraLowLatency"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Ultra-Low Latency Mode (Spatial ISP)"
+            android:textColor="#FFFFFF"
+            android:textSize="14sp"
+            android:layout_marginBottom="12dp" />
+
+        <!-- Hardware Video Stabilization -->
+        <com.google.android.material.switchmaterial.SwitchMaterial
+            android:id="@+id/switchStabilization"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Hardware Stabilization (OIS/EIS)"
+            android:textColor="#FFFFFF"
+            android:textSize="14sp"
+            android:layout_marginBottom="24dp" />
+
+        <!-- Save Button -->
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/btnSaveSettings"
+            android:layout_width="match_parent"
+            android:layout_height="50dp"
+            android:text="Apply &amp; Reconnect"
+            android:textSize="15sp"
+            android:textStyle="bold"
+            android:textColor="#FFFFFF"
+            app:cornerRadius="12dp"
+            app:backgroundTint="#0078D4" />
+
+    </LinearLayout>
+
+</ScrollView>

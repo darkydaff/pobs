@@ -1,0 +1,20 @@
+<resources>
+    <string name="app_name">POBS Companion</string>
+    <string name="title_setup_guide">1-Time Setup Guide</string>
+    <string name="title_status">Device Status</string>
+    <string name="title_camera_config">Camera Configuration</string>
+    <string name="title_scrcpy_command">scrcpy Command Preview</string>
+    <string name="setup_step1">1. Tap "Open Developer Settings" below.</string>
+    <string name="setup_step2">2. Enable "Developer Options" &amp; "USB Debugging".</string>
+    <string name="setup_step3">3. Enable "Wireless Debugging" (for wireless operation).</string>
+    <string name="setup_step4">4. In Wireless Debugging, tap "Pair with pairing code" to pair in OBS Plugin.</string>
+    <string name="btn_open_dev_settings">Open Developer Settings</string>
+    <string name="label_facing">Camera Facing:</string>
+    <string name="label_resolution">Resolution:</string>
+    <string name="label_fps">Max FPS:</string>
+    <string name="label_battery">Battery:</string>
+    <string name="btn_save">Save Preferences</string>
+    <string name="btn_copy">Copy Command</string>
+    <string name="msg_saved">Preferences saved!</string>
+    <string name="msg_copied">Command copied to clipboard!</string>
+</resources>
