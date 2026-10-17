@@ -153,9 +153,7 @@ class MainActivity : AppCompatActivity() {
 
         val gestureDetector = GestureDetector(this, object : GestureDetector.SimpleOnGestureListener() {
             override fun onSingleTapConfirmed(e: MotionEvent): Boolean {
-                framingOverlay.triggerFocusAnimation(e.x, e.y)
-                previewTextureView.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
-                return true
+                return false
             }
 
             override fun onDoubleTap(e: MotionEvent): Boolean {
@@ -245,16 +243,6 @@ class MainActivity : AppCompatActivity() {
     private fun configureTransform(viewWidth: Int, viewHeight: Int) {
         if (viewWidth == 0 || viewHeight == 0) return
         val matrix = Matrix()
-        val centerX = viewWidth / 2f
-        val centerY = viewHeight / 2f
-
-        val facing = CameraStreamingService.activeFacing.lowercase()
-        val isFront = facing == "front"
-        val activeOrient = CameraStreamingService.activeOrientation
-
-        if (isFront) {
-            matrix.postScale(-1f, 1f, centerX, centerY)
-        }
         previewTextureView.setTransform(matrix)
     }
 
