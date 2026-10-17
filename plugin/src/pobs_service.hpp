@@ -25,6 +25,9 @@ struct CompanionStatus {
     float zoom_ratio = 1.0f;
     bool is_streaming_active = true;
     bool is_connected = false;
+    std::string orientation_mode = "auto";
+    std::string physical_orientation = "vertical";
+    int rotation_degrees = 0;
 };
 
 class PobsService {
@@ -46,6 +49,7 @@ public:
     void set_format(const std::string& resolution, int fps);
     void set_zoom(float ratio);
     void set_streaming(bool enabled);
+    void set_orientation(const std::string& mode);
 
     PobsWebSocketServer& ws();
     AdbManager& adb();

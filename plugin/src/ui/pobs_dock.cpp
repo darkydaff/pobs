@@ -178,11 +178,11 @@ void PobsDock::setup_ui() {
     controls_layout->setContentsMargins(0, 0, 0, 0);
     controls_layout->setSpacing(8);
 
-    // Format Controls Card (Resolution & FPS)
+    // Format Controls Card (Resolution & FPS & Orientation)
     QFrame *format_card = new QFrame(controls_view_);
     format_card->setObjectName("format_card");
     format_card->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
-    format_card->setFixedHeight(62);
+    format_card->setFixedHeight(106);
     format_card->setStyleSheet(
         "#format_card {"
         "  background-color: #18181b;"
@@ -245,10 +245,24 @@ void PobsDock::setup_ui() {
     connect(fps_combo_, QOverload<int>::of(&QComboBox::currentIndexChanged),
             this, &PobsDock::on_fps_changed);
 
+    QLabel *orient_title = new QLabel("ORIENTATION MODE", format_card);
+    orient_title->setStyleSheet("color: #71717a; font-size: 10px; font-weight: 700; letter-spacing: 0.5px; margin-top: 2px;");
+
+    orientation_combo_ = new QComboBox(format_card);
+    orientation_combo_->addItem("Auto (Gyroscope)", "auto");
+    orientation_combo_->addItem("Vertical (Portrait)", "vertical");
+    orientation_combo_->addItem("Horizontal (Landscape)", "horizontal");
+    orientation_combo_->setStyleSheet(combo_style);
+
+    connect(orientation_combo_, QOverload<int>::of(&QComboBox::currentIndexChanged),
+            this, &PobsDock::on_orientation_changed);
+
     format_grid->addWidget(res_title, 0, 0);
     format_grid->addWidget(fps_title, 0, 1);
     format_grid->addWidget(res_combo_, 1, 0);
     format_grid->addWidget(fps_combo_, 1, 1);
+    format_grid->addWidget(orient_title, 2, 0, 1, 2);
+    format_grid->addWidget(orientation_combo_, 3, 0, 1, 2);
 
     controls_layout->addWidget(format_card);
 
@@ -873,10 +887,13 @@ void PobsDock::update_status(const CompanionStatus &status) {
             battery_text_label_->hide();
         }
 
+        QString orient_pill = (status.physical_orientation == "vertical") ? "📱 Vert" : "📺 Horiz";
         if (status.is_streaming_active) {
-            stream_info_label_->setText(QString("%1 @ %2 FPS • Hardware H.264")
+            stream_info_label_->setText(QString("%1 @ %2 FPS • %3 • %4")
                 .arg(QString::fromStdString(status.active_resolution))
-                .arg(status.active_fps));
+                .arg(status.active_fps)
+                .arg(QString::fromStdString(status.active_camera == "front" ? "Front" : "Back"))
+                .arg(orient_pill));
             stream_info_label_->setStyleSheet(
                 "color: #22c55e;"
                 "font-size: 11px;"
@@ -886,7 +903,7 @@ void PobsDock::update_status(const CompanionStatus &status) {
                 "border: 1px solid rgba(34, 197, 94, 0.2);"
                 "border-radius: 6px;");
         } else {
-            stream_info_label_->setText("Stream Paused • Standby");
+            stream_info_label_->setText(QString("Stream Paused • %1").arg(orient_pill));
             stream_info_label_->setStyleSheet(
                 "color: #f59e0b;"
                 "font-size: 11px;"
@@ -912,6 +929,17 @@ void PobsDock::update_status(const CompanionStatus &status) {
         }
         updating_combos_ = false;
 
+        if (orientation_combo_) {
+            updating_orientation_ = true;
+            for (int i = 0; i < orientation_combo_->count(); ++i) {
+                if (orientation_combo_->itemData(i).toString().toStdString() == status.orientation_mode) {
+                    orientation_combo_->setCurrentIndex(i);
+                    break;
+                }
+            }
+            updating_orientation_ = false;
+        }
+
         updating_zoom_ = true;
         int zoom_val = (int)(status.zoom_ratio * 10.0f);
         zoom_slider_->setValue(zoom_val);
@@ -932,6 +960,12 @@ void PobsDock::update_status(const CompanionStatus &status) {
         qr_widget_->set_text(QString("pobs://%1:8765").arg(lan_ip));
         ip_pill_label_->setText(QString("Direct LAN: %1:8765").arg(lan_ip));
     }
+}
+
+void PobsDock::on_orientation_changed(int index) {
+    if (updating_orientation_ || index < 0) return;
+    QString mode = orientation_combo_->itemData(index).toString();
+    PobsService::instance().set_orientation(mode.toStdString());
 }
 
 void PobsDock::on_resolution_changed(int index) {

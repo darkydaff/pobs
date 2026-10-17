@@ -64,6 +64,9 @@ class PreferencesRepository(context: Context) {
     fun getLastHost(): String? = prefs.getString(KEY_LAST_HOST, null)
     fun saveLastHost(host: String) = prefs.edit { putString(KEY_LAST_HOST, host) }
 
+    fun getOrientationMode(): String = prefs.getString(KEY_ORIENTATION_MODE, "auto") ?: "auto"
+    fun setOrientationMode(mode: String) = prefs.edit { putString(KEY_ORIENTATION_MODE, mode) }
+
     companion object {
         private const val PREFS_NAME = "pobs_preferences"
         private const val KEY_CAMERA_ID = "camera_id"
@@ -76,12 +79,13 @@ class PreferencesRepository(context: Context) {
         private const val KEY_ULTRA_LOW_LATENCY = "ultra_low_latency"
         private const val KEY_STABILIZATION = "stabilization"
         private const val KEY_LAST_HOST = "last_host"
+        private const val KEY_ORIENTATION_MODE = "orientation_mode"
 
         const val DEFAULT_FACING = "front"
         const val DEFAULT_SIZE = "1920x1080"
         const val DEFAULT_FPS = 60
         const val DEFAULT_BITRATE = 12_000_000 // 12 Mbps
-        const val DEFAULT_KEYFRAME_INTERVAL = 2 // 2 seconds (user requested)
-        const val DEFAULT_MAX_B_FRAMES = 1      // 1 B-frame (user requested)
+        const val DEFAULT_KEYFRAME_INTERVAL = 2 // 2 seconds
+        const val DEFAULT_MAX_B_FRAMES = 1      // 1 B-frame
     }
 }

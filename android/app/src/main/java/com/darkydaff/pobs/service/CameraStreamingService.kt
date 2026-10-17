@@ -33,6 +33,12 @@ import java.util.concurrent.atomic.AtomicBoolean
 
 class CameraStreamingService : Service() {
 
+    enum class OrientationMode {
+        AUTO,
+        VERTICAL,
+        HORIZONTAL
+    }
+
     companion object {
         const val TAG = "POBS_SERVICE"
         const val NOTIFICATION_ID = 1001
@@ -59,6 +65,9 @@ class CameraStreamingService : Service() {
         @Volatile var activeFps = 60
         @Volatile var isTorchOn = false
         @Volatile var isConnectedToHost = false
+        @Volatile var currentOrientationMode: OrientationMode = OrientationMode.AUTO
+        @Volatile var activeOrientation: String = "vertical"
+        @Volatile var currentRotationDegrees: Int = 90
         @Volatile var batteryPercentage = 100
         @Volatile var isBatteryCharging = false
 
@@ -68,6 +77,7 @@ class CameraStreamingService : Service() {
         var onFormatChangedListener: ((String, Int) -> Unit)? = null
         var onZoomChangedListener: ((Float) -> Unit)? = null
         var onStreamStateListener: ((Boolean) -> Unit)? = null
+        var onOrientationChangedListener: ((OrientationMode, String, Int) -> Unit)? = null
         var onStateChangedListener: (() -> Unit)? = null
         private val mainHandler = Handler(Looper.getMainLooper())
 
@@ -98,6 +108,14 @@ class CameraStreamingService : Service() {
         fun toggleTorch(enable: Boolean? = null) {
             val target = enable ?: !isTorchOn
             activeService?.toggleTorchInternal(target)
+        }
+
+        fun setOrientationMode(mode: OrientationMode) {
+            activeService?.setOrientationModeInternal(mode)
+        }
+
+        fun updatePhysicalOrientation(angleDegrees: Int) {
+            activeService?.updatePhysicalOrientationInternal(angleDegrees)
         }
     }
 
@@ -157,6 +175,13 @@ class CameraStreamingService : Service() {
         activeResolution = prefsRepo.getResolution()
         activeFps = prefsRepo.getFps()
 
+        currentOrientationMode = when (prefsRepo.getOrientationMode().lowercase()) {
+            "vertical" -> OrientationMode.VERTICAL
+            "horizontal" -> OrientationMode.HORIZONTAL
+            else -> OrientationMode.AUTO
+        }
+        recalculateOrientation(forceNotify = false)
+
         createNotificationChannel()
         startBackgroundThread()
         acquireWakeLock()
@@ -172,6 +197,7 @@ class CameraStreamingService : Service() {
                     if (connected) {
                         notifyFormatUpdated(activeResolution, activeFps)
                         sendBatteryUpdate(batteryPercentage, isBatteryCharging)
+                        notifyOrientationUpdated(activeOrientation, currentRotationDegrees, currentOrientationMode.name.lowercase())
                     }
                 }
 
@@ -203,6 +229,16 @@ class CameraStreamingService : Service() {
                 override fun onStreamStateChanged(streaming: Boolean) {
                     Log.i(TAG, "Host requested stream state: $streaming")
                     setStreamingActiveInternal(streaming)
+                }
+
+                override fun onOrientationModeChangedByHost(mode: String) {
+                    Log.i(TAG, "Host requested orientation mode: $mode")
+                    val targetMode = when (mode.lowercase()) {
+                        "vertical" -> OrientationMode.VERTICAL
+                        "horizontal" -> OrientationMode.HORIZONTAL
+                        else -> OrientationMode.AUTO
+                    }
+                    setOrientationModeInternal(targetMode)
                 }
             }
         }
@@ -636,6 +672,7 @@ class CameraStreamingService : Service() {
         Log.i(TAG, "Switching camera to $newFacing...")
         activeFacing = newFacing
         prefsRepo.setFacing(newFacing)
+        recalculateOrientation(forceNotify = true)
         if (newFacing.lowercase() == "front" && isTorchOn) {
             isTorchOn = false
             wsClient.notifyTorchSwitched(false)
@@ -677,6 +714,78 @@ class CameraStreamingService : Service() {
                 } catch (e: Exception) {
                     Log.e(TAG, "Error updating torch repeating request", e)
                 }
+            }
+        }
+    }
+
+    private var lastReportedRotation = -1
+    private var lastReportedOrientation = ""
+    private var lastPhysicalAngle = 0
+
+    fun setOrientationModeInternal(mode: OrientationMode) {
+        currentOrientationMode = mode
+        prefsRepo.setOrientationMode(mode.name.lowercase())
+        recalculateOrientation(forceNotify = true)
+    }
+
+    fun updatePhysicalOrientationInternal(angle: Int) {
+        if (angle == -1) return
+        val snappedAngle = when (angle) {
+            in 45..134 -> 90
+            in 135..224 -> 180
+            in 225..314 -> 270
+            else -> 0
+        }
+        if (snappedAngle != lastPhysicalAngle) {
+            lastPhysicalAngle = snappedAngle
+            if (currentOrientationMode == OrientationMode.AUTO) {
+                recalculateOrientation()
+            }
+        }
+    }
+
+    fun recalculateOrientation(forceNotify: Boolean = false) {
+        val targetOrientation: String
+        val targetRotation: Int
+
+        when (currentOrientationMode) {
+            OrientationMode.VERTICAL -> {
+                targetOrientation = "vertical"
+                targetRotation = if (activeFacing.lowercase() == "front") 270 else 90
+            }
+            OrientationMode.HORIZONTAL -> {
+                targetOrientation = "horizontal"
+                targetRotation = 0
+            }
+            OrientationMode.AUTO -> {
+                if (lastPhysicalAngle == 90) {
+                    targetOrientation = "horizontal"
+                    targetRotation = 180
+                } else if (lastPhysicalAngle == 270) {
+                    targetOrientation = "horizontal"
+                    targetRotation = 0
+                } else if (lastPhysicalAngle == 180) {
+                    targetOrientation = "vertical"
+                    targetRotation = if (activeFacing.lowercase() == "front") 90 else 270
+                } else {
+                    targetOrientation = "vertical"
+                    targetRotation = if (activeFacing.lowercase() == "front") 270 else 90
+                }
+            }
+        }
+
+        activeOrientation = targetOrientation
+        currentRotationDegrees = targetRotation
+
+        if (forceNotify || targetRotation != lastReportedRotation || targetOrientation != lastReportedOrientation) {
+            lastReportedRotation = targetRotation
+            lastReportedOrientation = targetOrientation
+            if (::wsClient.isInitialized) {
+                wsClient.notifyOrientationUpdated(targetOrientation, targetRotation, currentOrientationMode.name.lowercase())
+            }
+            mainHandler.post {
+                onOrientationChangedListener?.invoke(currentOrientationMode, targetOrientation, targetRotation)
+                notifyStateChanged()
             }
         }
     }

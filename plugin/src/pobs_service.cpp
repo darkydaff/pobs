@@ -1,4 +1,5 @@
 #include "pobs_service.hpp"
+#include "source/pobs_source.h"
 #include "net/pobs_ws_server.hpp"
 #include "adb/adb_manager.hpp"
 
@@ -110,6 +111,9 @@ PobsService::PobsService()
                     status_.battery_level = bat.value("level").toInt(-1);
                     status_.is_charging = bat.value("is_charging").toBool(false);
                 }
+                if (root.contains("orientation_mode")) {
+                    status_.orientation_mode = root.value("orientation_mode").toString("auto").toStdString();
+                }
                 status_.is_connected = true;
                 blog(LOG_INFO, "[POBS] Handshake: %s (camera: %s, %s @ %d fps)",
                      status_.device_model.c_str(), status_.active_camera.c_str(),
@@ -131,6 +135,13 @@ PobsService::PobsService()
                 status_.zoom_ratio = (float)root.value("ratio").toDouble(1.0);
             } else if (type == "stream_state_updated") {
                 status_.is_streaming_active = root.value("enabled").toBool(true);
+            } else if (type == "orientation_updated") {
+                status_.physical_orientation = root.value("orientation").toString("vertical").toStdString();
+                status_.rotation_degrees = root.value("rotation").toInt(0);
+                status_.orientation_mode = root.value("mode").toString("auto").toStdString();
+                blog(LOG_INFO, "[POBS] Orientation update: %s, rotation=%d, mode=%s",
+                     status_.physical_orientation.c_str(), status_.rotation_degrees, status_.orientation_mode.c_str());
+                pobs_source_set_rotation(status_.rotation_degrees);
             }
             copy = status_;
             cb = status_cb_;
@@ -210,6 +221,18 @@ void PobsService::set_streaming(bool enabled) {
     }
     if (ws_server_) {
         QString msg = QString("{\"type\":\"set_streaming\",\"enabled\":%1}").arg(enabled ? "true" : "false");
+        ws_server_->broadcast_text(msg);
+    }
+}
+
+void PobsService::set_orientation(const std::string& mode) {
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        status_.orientation_mode = mode;
+    }
+    if (ws_server_) {
+        QString msg = QString("{\"type\":\"set_orientation\",\"mode\":\"%1\"}")
+            .arg(QString::fromStdString(mode));
         ws_server_->broadcast_text(msg);
     }
 }

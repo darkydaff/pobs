@@ -5,7 +5,12 @@ import android.app.Dialog
 import android.app.PictureInPictureParams
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.content.res.ColorStateList
 import android.content.res.Configuration
+import android.graphics.Matrix
+import android.graphics.RectF
+import android.graphics.SurfaceTexture
+import android.hardware.SensorManager
 import android.os.Build
 import android.os.Bundle
 import android.util.Rational
@@ -13,27 +18,31 @@ import android.view.*
 import android.widget.*
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
+import androidx.cardview.widget.CardView
 import androidx.core.content.ContextCompat
 import com.darkydaff.pobs.R
 import com.darkydaff.pobs.data.BatteryRepository
 import com.darkydaff.pobs.data.PreferencesRepository
 import com.darkydaff.pobs.service.CameraStreamingService
+import com.darkydaff.pobs.service.CameraStreamingService.OrientationMode
 import com.google.android.material.button.MaterialButton
 import com.google.android.material.button.MaterialButtonToggleGroup
 import com.google.android.material.switchmaterial.SwitchMaterial
 import com.journeyapps.barcodescanner.ScanContract
 import com.journeyapps.barcodescanner.ScanOptions
 
-class MainActivity : AppCompatActivity(), SurfaceHolder.Callback {
+class MainActivity : AppCompatActivity() {
 
     private lateinit var prefsRepo: PreferencesRepository
     private lateinit var batteryRepo: BatteryRepository
 
-    private lateinit var previewSurfaceView: AutoFitSurfaceView
+    private lateinit var viewfinderCard: CardView
+    private lateinit var previewTextureView: AutoFitTextureView
     private lateinit var overlayControls: View
     private lateinit var tvStreamBadge: TextView
     private lateinit var tvBattery: TextView
     private lateinit var ivBattery: ImageView
+    private lateinit var tvOrientationBadge: TextView
     private lateinit var statusDot: View
     private lateinit var btnEnterPip: ImageButton
     private lateinit var btnOpenSettings: ImageButton
@@ -48,6 +57,7 @@ class MainActivity : AppCompatActivity(), SurfaceHolder.Callback {
     private lateinit var btnFps60: MaterialButton
 
     private lateinit var btnFlipCamera: MaterialButton
+    private lateinit var btnOrientation: MaterialButton
     private lateinit var btnTorch: MaterialButton
     private lateinit var btnDimScreen: MaterialButton
     private lateinit var btnScanQr: MaterialButton
@@ -55,8 +65,9 @@ class MainActivity : AppCompatActivity(), SurfaceHolder.Callback {
     private lateinit var btnPauseStream: ImageButton
     private lateinit var pauseOverlay: View
     private lateinit var btnResumeFromOverlay: MaterialButton
-    private var isUpdatingTogglesProgrammatically = false
 
+    private var orientationEventListener: OrientationEventListener? = null
+    private var isUpdatingTogglesProgrammatically = false
     private var isScreenDimmed = false
 
     private val barcodeLauncher = registerForActivityResult(ScanContract()) { result ->
@@ -85,11 +96,15 @@ class MainActivity : AppCompatActivity(), SurfaceHolder.Callback {
         prefsRepo = PreferencesRepository(this)
         batteryRepo = BatteryRepository(this)
 
-        previewSurfaceView = findViewById(R.id.previewSurfaceView)
+        viewfinderCard = findViewById(R.id.viewfinderCard)
+        viewfinderCard.clipToOutline = true
+
+        previewTextureView = findViewById(R.id.previewTextureView)
         overlayControls = findViewById(R.id.overlayControls)
         tvStreamBadge = findViewById(R.id.tvStreamBadge)
         tvBattery = findViewById(R.id.tvBattery)
         ivBattery = findViewById(R.id.ivBattery)
+        tvOrientationBadge = findViewById(R.id.tvOrientationBadge)
         statusDot = findViewById(R.id.statusDot)
         btnEnterPip = findViewById(R.id.btnEnterPip)
         btnOpenSettings = findViewById(R.id.btnOpenSettings)
@@ -104,6 +119,7 @@ class MainActivity : AppCompatActivity(), SurfaceHolder.Callback {
         btnFps60 = findViewById(R.id.btnFps60)
 
         btnFlipCamera = findViewById(R.id.btnFlipCamera)
+        btnOrientation = findViewById(R.id.btnOrientation)
         btnTorch = findViewById(R.id.btnTorch)
         btnDimScreen = findViewById(R.id.btnDimScreen)
         btnScanQr = findViewById(R.id.btnScanQr)
@@ -111,6 +127,25 @@ class MainActivity : AppCompatActivity(), SurfaceHolder.Callback {
         btnPauseStream = findViewById(R.id.btnPauseStream)
         pauseOverlay = findViewById(R.id.pauseOverlay)
         btnResumeFromOverlay = findViewById(R.id.btnResumeFromOverlay)
+
+        // TextureView surface listener
+        previewTextureView.surfaceTextureListener = object : TextureView.SurfaceTextureListener {
+            override fun onSurfaceTextureAvailable(surfaceTexture: SurfaceTexture, width: Int, height: Int) {
+                CameraStreamingService.updatePreviewSurface(Surface(surfaceTexture))
+                configureTransform(width, height)
+            }
+
+            override fun onSurfaceTextureSizeChanged(surfaceTexture: SurfaceTexture, width: Int, height: Int) {
+                configureTransform(width, height)
+            }
+
+            override fun onSurfaceTextureDestroyed(surfaceTexture: SurfaceTexture): Boolean {
+                CameraStreamingService.updatePreviewSurface(null)
+                return true
+            }
+
+            override fun onSurfaceTextureUpdated(surfaceTexture: SurfaceTexture) {}
+        }
 
         // Pinch-to-zoom on camera preview
         val scaleDetector = ScaleGestureDetector(this, object : ScaleGestureDetector.SimpleOnScaleGestureListener() {
@@ -121,7 +156,7 @@ class MainActivity : AppCompatActivity(), SurfaceHolder.Callback {
                 return true
             }
         })
-        previewSurfaceView.setOnTouchListener { _, event ->
+        previewTextureView.setOnTouchListener { _, event ->
             scaleDetector.onTouchEvent(event)
             true
         }
@@ -137,11 +172,24 @@ class MainActivity : AppCompatActivity(), SurfaceHolder.Callback {
             updateUi()
         }
 
-        // Set proper aspect ratio to avoid squishing
-        updateSurfaceAspectRatio()
-        previewSurfaceView.holder.addCallback(this)
+        btnOrientation.setOnClickListener {
+            val nextMode = when (CameraStreamingService.currentOrientationMode) {
+                CameraStreamingService.OrientationMode.AUTO -> CameraStreamingService.OrientationMode.VERTICAL
+                CameraStreamingService.OrientationMode.VERTICAL -> CameraStreamingService.OrientationMode.HORIZONTAL
+                CameraStreamingService.OrientationMode.HORIZONTAL -> CameraStreamingService.OrientationMode.AUTO
+            }
+            CameraStreamingService.setOrientationMode(nextMode)
+            updateUi()
+        }
 
-        // Setup format toggle groups
+        orientationEventListener = object : OrientationEventListener(this, SensorManager.SENSOR_DELAY_UI) {
+            override fun onOrientationChanged(orientation: Int) {
+                if (orientation != ORIENTATION_UNKNOWN) {
+                    CameraStreamingService.updatePhysicalOrientation(orientation)
+                }
+            }
+        }
+
         initFormatToggles()
 
         btnFlipCamera.setOnClickListener {
@@ -177,18 +225,40 @@ class MainActivity : AppCompatActivity(), SurfaceHolder.Callback {
         checkPermissionsAndStart()
     }
 
-    private fun updateSurfaceAspectRatio() {
-        val orientation = resources.configuration.orientation
-        if (orientation == Configuration.ORIENTATION_LANDSCAPE) {
-            previewSurfaceView.setAspectRatio(16, 9)
-        } else {
-            previewSurfaceView.setAspectRatio(9, 16)
-        }
-    }
+    private fun configureTransform(viewWidth: Int, viewHeight: Int) {
+        if (viewWidth == 0 || viewHeight == 0) return
+        val matrix = Matrix()
+        val viewRect = RectF(0f, 0f, viewWidth.toFloat(), viewHeight.toFloat())
+        val centerX = viewRect.centerX()
+        val centerY = viewRect.centerY()
 
-    override fun onConfigurationChanged(newConfig: Configuration) {
-        super.onConfigurationChanged(newConfig)
-        updateSurfaceAspectRatio()
+        val rotation = windowManager.defaultDisplay.rotation
+        val facing = CameraStreamingService.activeFacing.lowercase()
+        val sensorOrientation = if (facing == "front") 270 else 90
+
+        val deviceRotationDegrees = when (rotation) {
+            Surface.ROTATION_90 -> 90
+            Surface.ROTATION_180 -> 180
+            Surface.ROTATION_270 -> 270
+            else -> 0
+        }
+
+        val displayOrientation = (sensorOrientation - deviceRotationDegrees + 360) % 360
+
+        if (displayOrientation == 90 || displayOrientation == 270) {
+            val bufferRect = RectF(0f, 0f, viewHeight.toFloat(), viewWidth.toFloat())
+            bufferRect.offset(centerX - bufferRect.centerX(), centerY - bufferRect.centerY())
+            matrix.setRectToRect(viewRect, bufferRect, Matrix.ScaleToFit.FILL)
+            val scale = maxOf(
+                viewWidth.toFloat() / viewHeight.toFloat(),
+                viewHeight.toFloat() / viewWidth.toFloat()
+            )
+            matrix.postScale(scale, scale, centerX, centerY)
+            matrix.postRotate(displayOrientation.toFloat(), centerX, centerY)
+        } else if (displayOrientation == 180) {
+            matrix.postRotate(180f, centerX, centerY)
+        }
+        previewTextureView.setTransform(matrix)
     }
 
     private fun initFormatToggles() {
@@ -235,14 +305,18 @@ class MainActivity : AppCompatActivity(), SurfaceHolder.Callback {
 
     override fun onPause() {
         super.onPause()
+        orientationEventListener?.disable()
         CameraStreamingService.onFormatChangedListener = null
         CameraStreamingService.onZoomChangedListener = null
         CameraStreamingService.onStreamStateListener = null
+        CameraStreamingService.onOrientationChangedListener = null
         CameraStreamingService.onStateChangedListener = null
     }
 
     override fun onResume() {
         super.onResume()
+        orientationEventListener?.enable()
+
         CameraStreamingService.onFormatChangedListener = { res, fps ->
             runOnUiThread {
                 isUpdatingTogglesProgrammatically = true
@@ -269,27 +343,24 @@ class MainActivity : AppCompatActivity(), SurfaceHolder.Callback {
                 updateUi()
             }
         }
+        CameraStreamingService.onOrientationChangedListener = { _, _, _ ->
+            runOnUiThread {
+                updateUi()
+                configureTransform(previewTextureView.width, previewTextureView.height)
+            }
+        }
         CameraStreamingService.onStateChangedListener = {
             runOnUiThread {
                 updateUi()
             }
         }
         updateUi()
-        if (previewSurfaceView.holder.surface?.isValid == true) {
-            CameraStreamingService.updatePreviewSurface(previewSurfaceView.holder.surface)
+
+        if (previewTextureView.isAvailable) {
+            val surface = Surface(previewTextureView.surfaceTexture)
+            CameraStreamingService.updatePreviewSurface(surface)
+            configureTransform(previewTextureView.width, previewTextureView.height)
         }
-    }
-
-    override fun surfaceCreated(holder: SurfaceHolder) {
-        CameraStreamingService.updatePreviewSurface(holder.surface)
-    }
-
-    override fun surfaceChanged(holder: SurfaceHolder, format: Int, width: Int, height: Int) {
-        CameraStreamingService.updatePreviewSurface(holder.surface)
-    }
-
-    override fun surfaceDestroyed(holder: SurfaceHolder) {
-        CameraStreamingService.updatePreviewSurface(null)
     }
 
     private fun checkPermissionsAndStart() {
@@ -340,6 +411,39 @@ class MainActivity : AppCompatActivity(), SurfaceHolder.Callback {
             btnTorch.visibility = View.VISIBLE
         }
 
+        val orientMode = CameraStreamingService.currentOrientationMode
+        val activeOrient = CameraStreamingService.activeOrientation
+        val orientText = if (activeOrient == "vertical") "📱 Vert" else "📺 Horiz"
+        tvOrientationBadge.text = when (orientMode) {
+            CameraStreamingService.OrientationMode.AUTO -> "Auto • $orientText"
+            CameraStreamingService.OrientationMode.VERTICAL -> "Vert • $orientText"
+            CameraStreamingService.OrientationMode.HORIZONTAL -> "Horiz • $orientText"
+        }
+
+        when (orientMode) {
+            CameraStreamingService.OrientationMode.AUTO -> {
+                btnOrientation.text = "Auto"
+                btnOrientation.setIconResource(R.drawable.ic_orientation_auto)
+                btnOrientation.iconTint = ColorStateList.valueOf(0xFF60A5FA.toInt())
+            }
+            CameraStreamingService.OrientationMode.VERTICAL -> {
+                btnOrientation.text = "Vert"
+                btnOrientation.setIconResource(R.drawable.ic_orientation_vert)
+                btnOrientation.iconTint = ColorStateList.valueOf(0xFF34D399.toInt())
+            }
+            CameraStreamingService.OrientationMode.HORIZONTAL -> {
+                btnOrientation.text = "Horiz"
+                btnOrientation.setIconResource(R.drawable.ic_orientation_horiz)
+                btnOrientation.iconTint = ColorStateList.valueOf(0xFFFBBF24.toInt())
+            }
+        }
+
+        if (activeOrient == "vertical") {
+            previewTextureView.setAspectRatio(9, 16)
+        } else {
+            previewTextureView.setAspectRatio(16, 9)
+        }
+
         val isStreamingActive = CameraStreamingService.isStreamingActive
         if (isStreamingActive) {
             btnPauseStream.setImageResource(R.drawable.ic_pause)
@@ -381,10 +485,10 @@ class MainActivity : AppCompatActivity(), SurfaceHolder.Callback {
 
     private fun updateTorchButtonStyle(enabled: Boolean) {
         if (enabled) {
-            btnTorch.iconTint = android.content.res.ColorStateList.valueOf(0xFF09090B.toInt())
+            btnTorch.iconTint = ColorStateList.valueOf(0xFF09090B.toInt())
             btnTorch.setBackgroundColor(0xFFEAB308.toInt())
         } else {
-            btnTorch.iconTint = android.content.res.ColorStateList.valueOf(0xFFD4D4D8.toInt())
+            btnTorch.iconTint = ColorStateList.valueOf(0xFFD4D4D8.toInt())
             btnTorch.setBackgroundColor(0xFF27272A.toInt())
         }
     }
@@ -405,8 +509,7 @@ class MainActivity : AppCompatActivity(), SurfaceHolder.Callback {
     private fun enterPipMode() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             try {
-                // Non-squished aspect ratio matching orientation
-                val isLandscape = resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
+                val isLandscape = CameraStreamingService.activeOrientation == "horizontal"
                 val ratio = if (isLandscape) Rational(16, 9) else Rational(9, 16)
                 val params = PictureInPictureParams.Builder()
                     .setAspectRatio(ratio)

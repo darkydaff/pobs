@@ -34,6 +34,7 @@ private slots:
     void on_torch_clicked();
     void on_resolution_changed(int index);
     void on_fps_changed(int index);
+    void on_orientation_changed(int index);
     void on_zoom_slider_changed(int value);
     void on_stream_pause_clicked();
 
@@ -105,7 +106,9 @@ private:
     // Format Controls
     QComboBox *res_combo_ = nullptr;
     QComboBox *fps_combo_ = nullptr;
+    QComboBox *orientation_combo_ = nullptr;
     bool updating_combos_ = false;
+    bool updating_orientation_ = false;
 
     // Zoom Control
     QSlider *zoom_slider_ = nullptr;

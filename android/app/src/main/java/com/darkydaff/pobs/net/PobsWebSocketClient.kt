@@ -33,6 +33,7 @@ class PobsWebSocketClient(
         fun onFormatChangedByHost(resolution: String, fps: Int)
         fun onZoomChangedByHost(ratio: Float)
         fun onStreamStateChanged(isStreaming: Boolean)
+        fun onOrientationModeChangedByHost(mode: String)
     }
 
     var listener: Listener? = null
@@ -184,6 +185,16 @@ class PobsWebSocketClient(
         sendJson(json)
     }
 
+    fun notifyOrientationUpdated(orientation: String, rotation: Int, mode: String) {
+        val json = JSONObject().apply {
+            put("type", "orientation_updated")
+            put("orientation", orientation)
+            put("rotation", rotation)
+            put("mode", mode)
+        }
+        sendJson(json)
+    }
+
     private fun sendHandshake() {
         try {
             val bat = batteryRepository.getBatteryInfo()
@@ -216,6 +227,7 @@ class PobsWebSocketClient(
                 put("active_camera", selected.facing)
                 put("active_resolution", preferencesRepository.getResolution())
                 put("active_fps", preferencesRepository.getFps())
+                put("orientation_mode", preferencesRepository.getOrientationMode())
             }
 
             sendJson(json)
@@ -254,6 +266,10 @@ class PobsWebSocketClient(
                 "stream_state" -> {
                     val state = json.optString("state")
                     listener?.onStreamStateChanged(state == "streaming")
+                }
+                "set_orientation" -> {
+                    val mode = json.optString("mode", "auto")
+                    listener?.onOrientationModeChangedByHost(mode)
                 }
             }
         } catch (e: Exception) {
