@@ -11,7 +11,9 @@ import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.content.pm.ServiceInfo
+import android.hardware.SensorManager
 import android.hardware.camera2.*
+import android.view.OrientationEventListener
 import android.media.MediaCodec
 import android.media.MediaCodecInfo
 import android.media.MediaFormat
@@ -139,6 +141,7 @@ class CameraStreamingService : Service() {
     private lateinit var wsClient: PobsWebSocketClient
 
     private var wakeLock: PowerManager.WakeLock? = null
+    private var orientationEventListener: OrientationEventListener? = null
     private var backgroundThread: HandlerThread? = null
     private var backgroundHandler: Handler? = null
     private var packetBuffer = ByteArray(2 * 1024 * 1024)
@@ -198,6 +201,17 @@ class CameraStreamingService : Service() {
 
         createNotificationChannel()
         startBackgroundThread()
+
+        orientationEventListener = object : OrientationEventListener(this, SensorManager.SENSOR_DELAY_NORMAL) {
+            override fun onOrientationChanged(orientation: Int) {
+                if (orientation != ORIENTATION_UNKNOWN) {
+                    updatePhysicalOrientationInternal(orientation)
+                }
+            }
+        }
+        if (orientationEventListener?.canDetectOrientation() == true) {
+            orientationEventListener?.enable()
+        }
         acquireWakeLock()
 
         val filter = IntentFilter(Intent.ACTION_BATTERY_CHANGED)
@@ -262,6 +276,10 @@ class CameraStreamingService : Service() {
         super.onDestroy()
         activeService = null
         try { unregisterReceiver(batteryReceiver) } catch (_: Exception) {}
+        try {
+            orientationEventListener?.disable()
+        } catch (_: Exception) {}
+        orientationEventListener = null
         stopStream()
         releaseWakeLock()
         stopBackgroundThread()
@@ -292,7 +310,11 @@ class CameraStreamingService : Service() {
                 reconfigurePipeline()
             }
             ACTION_STOP -> {
-                stopStream()
+                try {
+            orientationEventListener?.disable()
+        } catch (_: Exception) {}
+        orientationEventListener = null
+        stopStream()
                 stopSelf()
             }
         }

@@ -98,18 +98,6 @@
             android:contentDescription="Pause/Resume Stream"
             android:layout_marginEnd="4dp" />
 
-        <!-- Enter PiP -->
-        <ImageButton
-            android:id="@+id/btnEnterPip"
-            android:layout_width="32dp"
-            android:layout_height="32dp"
-            android:background="?attr/selectableItemBackgroundBorderless"
-            android:src="@drawable/ic_pip"
-            app:tint="#D4D4D8"
-            android:scaleType="centerInside"
-            android:contentDescription="Enter PiP Mode"
-            android:layout_marginEnd="4dp" />
-
         <!-- Open Settings Dialog -->
         <ImageButton
             android:id="@+id/btnOpenSettings"

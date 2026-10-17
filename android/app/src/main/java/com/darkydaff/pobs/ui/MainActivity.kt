@@ -43,7 +43,6 @@ class MainActivity : AppCompatActivity() {
     private lateinit var ivBattery: ImageView
     private lateinit var tvOrientationBadge: TextView
     private lateinit var statusDot: View
-    private lateinit var btnEnterPip: ImageButton
     private lateinit var btnOpenSettings: ImageButton
 
     private lateinit var toggleResolution: MaterialButtonToggleGroup
@@ -65,7 +64,6 @@ class MainActivity : AppCompatActivity() {
     private lateinit var pauseOverlay: View
     private lateinit var btnResumeFromOverlay: MaterialButton
 
-    private var orientationEventListener: OrientationEventListener? = null
     private var isUpdatingTogglesProgrammatically = false
     private var isScreenDimmed = false
 
@@ -96,7 +94,6 @@ class MainActivity : AppCompatActivity() {
         ivBattery = findViewById(R.id.ivBattery)
         tvOrientationBadge = findViewById(R.id.tvOrientationBadge)
         statusDot = findViewById(R.id.statusDot)
-        btnEnterPip = findViewById(R.id.btnEnterPip)
         btnOpenSettings = findViewById(R.id.btnOpenSettings)
 
         toggleResolution = findViewById(R.id.toggleResolution)
@@ -202,14 +199,6 @@ class MainActivity : AppCompatActivity() {
             btnGrid.iconTint = ColorStateList.valueOf(color)
         }
 
-        orientationEventListener = object : OrientationEventListener(this, SensorManager.SENSOR_DELAY_UI) {
-            override fun onOrientationChanged(orientation: Int) {
-                if (orientation != ORIENTATION_UNKNOWN) {
-                    CameraStreamingService.updatePhysicalOrientation(orientation)
-                }
-            }
-        }
-
         initFormatToggles()
 
         btnFlipCamera.setOnClickListener {
@@ -225,11 +214,6 @@ class MainActivity : AppCompatActivity() {
         btnDimScreen.setOnClickListener {
             it.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
             toggleScreenDim()
-        }
-
-        btnEnterPip.setOnClickListener {
-            it.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
-            enterPipMode()
         }
 
         btnOpenSettings.setOnClickListener {
@@ -290,7 +274,6 @@ class MainActivity : AppCompatActivity() {
 
     override fun onPause() {
         super.onPause()
-        orientationEventListener?.disable()
         CameraStreamingService.onFormatChangedListener = null
         CameraStreamingService.onZoomChangedListener = null
         CameraStreamingService.onStreamStateListener = null
@@ -300,8 +283,6 @@ class MainActivity : AppCompatActivity() {
 
     override fun onResume() {
         super.onResume()
-        orientationEventListener?.enable()
-
         CameraStreamingService.onFormatChangedListener = { res, fps ->
             runOnUiThread {
                 isUpdatingTogglesProgrammatically = true
@@ -495,43 +476,6 @@ class MainActivity : AppCompatActivity() {
             btnDimScreen.setBackgroundColor(0xFF27272A.toInt())
         }
         window.attributes = layoutParams
-    }
-
-    private fun enterPipMode() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            try {
-                val isLandscape = CameraStreamingService.activeOrientation == "horizontal"
-                val ratio = if (isLandscape) Rational(16, 9) else Rational(9, 16)
-                val params = PictureInPictureParams.Builder()
-                    .setAspectRatio(ratio)
-                    .build()
-                enterPictureInPictureMode(params)
-            } catch (_: Exception) {
-                moveTaskToBack(true)
-            }
-        } else {
-            moveTaskToBack(true)
-        }
-    }
-
-    override fun onPictureInPictureModeChanged(
-        isInPictureInPictureMode: Boolean,
-        newConfig: Configuration
-    ) {
-        super.onPictureInPictureModeChanged(isInPictureInPictureMode, newConfig)
-        if (isInPictureInPictureMode) {
-            overlayControls.visibility = View.GONE
-        } else {
-            overlayControls.visibility = View.VISIBLE
-            updateUi()
-        }
-    }
-
-    override fun onUserLeaveHint() {
-        super.onUserLeaveHint()
-        if (CameraStreamingService.isStreaming) {
-            enterPipMode()
-        }
     }
 
     private fun showSettingsDialog() {
