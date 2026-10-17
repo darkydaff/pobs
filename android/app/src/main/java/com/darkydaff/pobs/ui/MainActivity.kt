@@ -135,6 +135,10 @@ class MainActivity : AppCompatActivity() {
         // TextureView surface listener
         previewTextureView.surfaceTextureListener = object : TextureView.SurfaceTextureListener {
             override fun onSurfaceTextureAvailable(surfaceTexture: SurfaceTexture, width: Int, height: Int) {
+                surfaceTexture.setDefaultBufferSize(
+                    CameraStreamingService.activeResolutionWidth,
+                    CameraStreamingService.activeResolutionHeight
+                )
                 CameraStreamingService.updatePreviewSurface(Surface(surfaceTexture))
                 configureTransform(width, height)
             }
@@ -266,35 +270,15 @@ class MainActivity : AppCompatActivity() {
     private fun configureTransform(viewWidth: Int, viewHeight: Int) {
         if (viewWidth == 0 || viewHeight == 0) return
         val matrix = Matrix()
-        val viewRect = RectF(0f, 0f, viewWidth.toFloat(), viewHeight.toFloat())
-        val centerX = viewRect.centerX()
-        val centerY = viewRect.centerY()
+        val centerX = viewWidth / 2f
+        val centerY = viewHeight / 2f
 
-        val rotation = windowManager.defaultDisplay.rotation
         val facing = CameraStreamingService.activeFacing.lowercase()
-        val sensorOrientation = if (facing == "front") 270 else 90
+        val isFront = facing == "front"
+        val activeOrient = CameraStreamingService.activeOrientation
 
-        val deviceRotationDegrees = when (rotation) {
-            Surface.ROTATION_90 -> 90
-            Surface.ROTATION_180 -> 180
-            Surface.ROTATION_270 -> 270
-            else -> 0
-        }
-
-        val displayOrientation = (sensorOrientation - deviceRotationDegrees + 360) % 360
-
-        if (displayOrientation == 90 || displayOrientation == 270) {
-            val bufferRect = RectF(0f, 0f, viewHeight.toFloat(), viewWidth.toFloat())
-            bufferRect.offset(centerX - bufferRect.centerX(), centerY - bufferRect.centerY())
-            matrix.setRectToRect(viewRect, bufferRect, Matrix.ScaleToFit.FILL)
-            val scale = maxOf(
-                viewWidth.toFloat() / viewHeight.toFloat(),
-                viewHeight.toFloat() / viewWidth.toFloat()
-            )
-            matrix.postScale(scale, scale, centerX, centerY)
-            matrix.postRotate(displayOrientation.toFloat(), centerX, centerY)
-        } else if (displayOrientation == 180) {
-            matrix.postRotate(180f, centerX, centerY)
+        if (isFront) {
+            matrix.postScale(-1f, 1f, centerX, centerY)
         }
         previewTextureView.setTransform(matrix)
     }
@@ -476,10 +460,10 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
-        if (activeOrient == "vertical") {
-            previewTextureView.setAspectRatio(9, 16)
-        } else {
-            previewTextureView.setAspectRatio(16, 9)
+        // Viewport aspect ratio stays constant (the physical phone rotates in hand)
+        previewTextureView.setAspectRatio(9, 16)
+        if (previewTextureView.width > 0 && previewTextureView.height > 0) {
+            configureTransform(previewTextureView.width, previewTextureView.height)
         }
 
         val isStreamingActive = CameraStreamingService.isStreamingActive

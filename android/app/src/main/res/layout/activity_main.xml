@@ -136,8 +136,8 @@
         <!-- Framed Card with Rounded Corners and Border -->
         <androidx.cardview.widget.CardView
             android:id="@+id/viewfinderCard"
-            android:layout_width="match_parent"
-            android:layout_height="match_parent"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
             android:layout_gravity="center"
             app:cardCornerRadius="16dp"
             app:cardElevation="0dp"
@@ -145,8 +145,8 @@
             app:cardPreventCornerOverlap="false">
 
             <FrameLayout
-                android:layout_width="match_parent"
-                android:layout_height="match_parent"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
                 android:layout_gravity="center"
                 android:background="#121214">
 

@@ -71,6 +71,20 @@ class CameraStreamingService : Service() {
         @Volatile var batteryPercentage = 100
         @Volatile var isBatteryCharging = false
 
+        val activeResolutionWidth: Int
+            get() = when (activeResolution) {
+                "3840x2160" -> 3840
+                "1280x720" -> 1280
+                else -> 1920
+            }
+
+        val activeResolutionHeight: Int
+            get() = when (activeResolution) {
+                "3840x2160" -> 2160
+                "1280x720" -> 720
+                else -> 1080
+            }
+
         @Volatile private var previewSurface: Surface? = null
         @Volatile private var activeService: CameraStreamingService? = null
 
@@ -721,6 +735,9 @@ class CameraStreamingService : Service() {
     private var lastReportedRotation = -1
     private var lastReportedOrientation = ""
     private var lastPhysicalAngle = 0
+    private var candidateOrientation: Int = 0
+    private var candidateTimestamp: Long = 0L
+    private val DEBOUNCE_MS = 400L
 
     fun setOrientationModeInternal(mode: OrientationMode) {
         currentOrientationMode = mode
@@ -730,14 +747,41 @@ class CameraStreamingService : Service() {
 
     fun updatePhysicalOrientationInternal(angle: Int) {
         if (angle == -1) return
-        val snappedAngle = when (angle) {
-            in 45..134 -> 90
-            in 135..224 -> 180
-            in 225..314 -> 270
+
+        // Compute candidate orientation with robust hysteresis to eliminate jitter
+        val newCandidate = when (lastPhysicalAngle) {
+            0, 180 -> {
+                // Currently vertical (portrait): Require deliberate tilt past 70° to enter landscape
+                when {
+                    angle in 70..110 -> 90    // Landscape right (phone rotated 90° clockwise)
+                    angle in 250..290 -> 270  // Landscape left (phone rotated 90° counter-clockwise)
+                    angle in 160..200 -> 180  // Inverted portrait
+                    else -> 0                 // Stay solidly in portrait
+                }
+            }
+            90, 270 -> {
+                // Currently horizontal (landscape): Require returning within 25° of vertical to re-enter portrait
+                when {
+                    angle in 335..360 || angle in 0..25 -> 0   // Return to portrait
+                    angle in 155..205 -> 180                   // Inverted portrait
+                    angle in 60..120 -> 90                     // Stay in landscape right
+                    angle in 240..300 -> 270                   // Stay in landscape left
+                    else -> lastPhysicalAngle                  // Retain current landscape in ambiguous zones
+                }
+            }
             else -> 0
         }
-        if (snappedAngle != lastPhysicalAngle) {
-            lastPhysicalAngle = snappedAngle
+
+        val now = System.currentTimeMillis()
+        if (newCandidate != candidateOrientation) {
+            candidateOrientation = newCandidate
+            candidateTimestamp = now
+            return
+        }
+
+        // Only commit when stable for at least DEBOUNCE_MS
+        if (now - candidateTimestamp >= DEBOUNCE_MS && newCandidate != lastPhysicalAngle) {
+            lastPhysicalAngle = newCandidate
             if (currentOrientationMode == OrientationMode.AUTO) {
                 recalculateOrientation()
             }
@@ -751,11 +795,13 @@ class CameraStreamingService : Service() {
         when (currentOrientationMode) {
             OrientationMode.VERTICAL -> {
                 targetOrientation = "vertical"
-                targetRotation = if (activeFacing.lowercase() == "front") 270 else 90
+                // Front camera mounted at 270°: 90° GPU rotation makes it upright in portrait OBS.
+                // Back camera mounted at 90°: 270° GPU rotation makes it upright in portrait OBS.
+                targetRotation = if (activeFacing.lowercase() == "front") 90 else 270
             }
             OrientationMode.HORIZONTAL -> {
                 targetOrientation = "horizontal"
-                targetRotation = 0
+                targetRotation = if (lastPhysicalAngle == 90) 180 else 0
             }
             OrientationMode.AUTO -> {
                 if (lastPhysicalAngle == 90) {
@@ -766,10 +812,10 @@ class CameraStreamingService : Service() {
                     targetRotation = 0
                 } else if (lastPhysicalAngle == 180) {
                     targetOrientation = "vertical"
-                    targetRotation = if (activeFacing.lowercase() == "front") 90 else 270
+                    targetRotation = if (activeFacing.lowercase() == "front") 270 else 90
                 } else {
                     targetOrientation = "vertical"
-                    targetRotation = if (activeFacing.lowercase() == "front") 270 else 90
+                    targetRotation = if (activeFacing.lowercase() == "front") 90 else 270
                 }
             }
         }

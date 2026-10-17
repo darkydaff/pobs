@@ -43,17 +43,28 @@ struct pobs_source {
 
 static struct pobs_source *s_active_source = NULL;
 static long s_current_rotation = 0;
+static pthread_mutex_t s_source_mutex = PTHREAD_MUTEX_INITIALIZER;
 
 void pobs_source_set_rotation(long rotation) {
+    pthread_mutex_lock(&s_source_mutex);
     s_current_rotation = rotation;
     if (s_active_source && s_active_source->source) {
+        obs_source_t *source = s_active_source->source;
+        obs_source_get_ref(source);
+        pthread_mutex_unlock(&s_source_mutex);
         blog(LOG_INFO, "Applying GPU async rotation: %ld degrees", rotation);
-        obs_source_set_async_rotation(s_active_source->source, rotation);
+        obs_source_set_async_rotation(source, rotation);
+        obs_source_release(source);
+        return;
     }
+    pthread_mutex_unlock(&s_source_mutex);
 }
 
 long pobs_source_get_rotation(void) {
-    return s_current_rotation;
+    pthread_mutex_lock(&s_source_mutex);
+    long rot = s_current_rotation;
+    pthread_mutex_unlock(&s_source_mutex);
+    return rot;
 }
 
 static bool set_socket_nonblocking(int fd) {
@@ -362,11 +373,16 @@ static const char *pobs_source_get_name(void *unused) {
 static void *pobs_source_create(obs_data_t *settings, obs_source_t *source) {
     struct pobs_source *data = (struct pobs_source *)bzalloc(sizeof(struct pobs_source));
     data->source = source;
+    
+    pthread_mutex_lock(&s_source_mutex);
     s_active_source = data;
+    long rot = s_current_rotation;
+    pthread_mutex_unlock(&s_source_mutex);
+
     obs_source_set_async_unbuffered(source, true);
-    if (s_current_rotation != 0) {
-        blog(LOG_INFO, "Applying initial GPU async rotation: %ld degrees", s_current_rotation);
-        obs_source_set_async_rotation(source, s_current_rotation);
+    if (rot != 0) {
+        blog(LOG_INFO, "Applying initial GPU async rotation: %ld degrees", rot);
+        obs_source_set_async_rotation(source, rot);
     }
     data->port = (uint16_t)obs_data_get_int(settings, "video_port");
     if (data->port == 0) data->port = DEFAULT_VIDEO_PORT;
@@ -404,6 +420,12 @@ static void pobs_source_destroy(void *vptr) {
     struct pobs_source *data = (struct pobs_source *)vptr;
     if (!data) return;
 
+    pthread_mutex_lock(&s_source_mutex);
+    if (s_active_source == data) {
+        s_active_source = NULL;
+    }
+    pthread_mutex_unlock(&s_source_mutex);
+
     if (data->stop_event) {
         os_event_signal(data->stop_event);
     }
@@ -429,9 +451,6 @@ static void pobs_source_destroy(void *vptr) {
 
     bfree(data->facing);
     bfree(data->resolution);
-    if (s_active_source == data) {
-        s_active_source = NULL;
-    }
     bfree(data);
 }
 
