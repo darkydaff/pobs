@@ -39,11 +39,13 @@ private slots:
     void on_stream_pause_clicked();
 
     void on_connect_known_clicked();
-    void on_pair_new_clicked();
+    void on_pair_step1_clicked();
+    void on_pair_step2_connect_clicked();
     void on_switch_to_pair_mode();
     void on_switch_to_known_mode();
     void on_known_device_selected(int index);
     void on_adb_header_clicked();
+    void on_lan_toggle_clicked();
 
 private:
     void setup_ui();
@@ -52,7 +54,7 @@ private:
     void save_known_devices();
     void add_or_update_known_device(const QString &name, const QString &ip, const QString &port);
     void update_status(const CompanionStatus &status);
-    void update_adb_ui(bool connected, const std::string &summary);
+    void update_adb_ui(const AdbConnectionInfo &info);
     void update_camera_buttons_style(const std::string &active_facing);
     void update_torch_button_style(bool active);
     void update_pause_button_style(bool streaming_active);
@@ -68,6 +70,15 @@ private:
     QStackedWidget *view_stack_ = nullptr;
     QWidget *qr_view_ = nullptr;
     QWidget *controls_view_ = nullptr;
+
+    // USB Auto-Detect Banner
+    QFrame *usb_banner_card_ = nullptr;
+    QLabel *usb_banner_icon_ = nullptr;
+    QLabel *usb_banner_text_ = nullptr;
+
+    // Collapsible Direct LAN fallback
+    QPushButton *lan_toggle_btn_ = nullptr;
+    QWidget *lan_fallback_widget_ = nullptr;
     QrCodeWidget *qr_widget_ = nullptr;
     QLabel *qr_hint_label_ = nullptr;
     QLabel *ip_pill_label_ = nullptr;
@@ -86,22 +97,30 @@ private:
     QPushButton *known_connect_btn_ = nullptr;
     QPushButton *pair_new_link_btn_ = nullptr;
 
-    // Mode 1: Pair New Device
+    // Mode 1: Step 1: Pair New Device (Code & Pair Port)
     QWidget *pair_mode_widget_ = nullptr;
     QLineEdit *new_name_edit_ = nullptr;
     QLineEdit *new_ip_edit_ = nullptr;
     QLineEdit *new_pair_port_edit_ = nullptr;
     QLineEdit *new_pin_edit_ = nullptr;
-    QLineEdit *new_connect_port_edit_ = nullptr;
     QPushButton *new_pair_btn_ = nullptr;
     QPushButton *cancel_pair_btn_ = nullptr;
 
-    // Mode 2: Connected Summary
+    // Mode 2: Step 2: Connect Port (Shown if auto-discovery couldn't find connect port)
+    QWidget *step2_mode_widget_ = nullptr;
+    QLabel *step2_ip_label_ = nullptr;
+    QLineEdit *step2_connect_port_edit_ = nullptr;
+    QPushButton *step2_connect_btn_ = nullptr;
+    QPushButton *step2_cancel_btn_ = nullptr;
+
+    // Mode 3: Connected Summary
     QWidget *connected_mode_widget_ = nullptr;
     QLabel *connected_summary_label_ = nullptr;
     QPushButton *reconnect_toggle_btn_ = nullptr;
 
     QVector<KnownDevice> known_devices_;
+    QString pending_pair_ip_;
+    QString pending_pair_name_;
 
     // Format Controls
     QComboBox *res_combo_ = nullptr;

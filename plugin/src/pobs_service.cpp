@@ -31,28 +31,72 @@ PobsService::PobsService()
     }
 
     adb_manager_->set_callbacks([this](const std::vector<LogicalDevice>& devices) {
-        bool connected = false;
-        std::string summary = "No device";
+        AdbConnectionInfo info;
+        info.devices = devices;
+
+        const LogicalDevice* usb_dev = nullptr;
+        const LogicalDevice* wireless_dev = nullptr;
+        const LogicalDevice* unauth_dev = nullptr;
+        int connected_count = 0;
+
         for (const auto& dev : devices) {
             if (dev.state == DeviceState::CONNECTED) {
-                connected = true;
-                std::string ep = dev.get_active_endpoint();
-                summary = dev.model.empty() ? ep : (dev.model + " (" + ep + ")");
-                adb_manager_->reverse_port(ep, 8765, 8765);
-                adb_manager_->reverse_port(ep, 8766, 8766);
-                break;
+                connected_count++;
+                if (dev.active_transport == TransportType::USB && !usb_dev) {
+                    usb_dev = &dev;
+                } else if (dev.active_transport == TransportType::WIRELESS && !wireless_dev) {
+                    wireless_dev = &dev;
+                }
+            } else if (dev.state == DeviceState::UNAUTHORIZED) {
+                if (!unauth_dev) unauth_dev = &dev;
             }
+        }
+
+        // Prioritize USB over Wireless for lowest latency and zero-config plug-and-play
+        const LogicalDevice* active_dev = usb_dev ? usb_dev : wireless_dev;
+
+        if (active_dev) {
+            info.is_connected = true;
+            info.transport = active_dev->active_transport;
+            info.state = DeviceState::CONNECTED;
+            info.model = active_dev->model;
+            info.endpoint = active_dev->get_active_endpoint();
+
+            // Ensure reverse tunnels on active device idempotently
+            bool tunnels_ok = adb_manager_->ensure_tunnels(info.endpoint);
+            info.tunnels_active = tunnels_ok;
+
+            std::string prefix = (info.transport == TransportType::USB) ? "USB: " : "Wireless: ";
+            std::string dev_name = info.model.empty() ? info.endpoint : info.model;
+            info.summary = prefix + dev_name;
+            if (tunnels_ok) {
+                info.summary += " (Tunnels Active)";
+            } else {
+                info.summary += " (Tunnel Verification Failed)";
+            }
+        } else if (unauth_dev) {
+            info.is_connected = false;
+            info.tunnels_active = false;
+            info.transport = unauth_dev->active_transport;
+            info.state = DeviceState::UNAUTHORIZED;
+            info.model = unauth_dev->model;
+            info.endpoint = unauth_dev->get_active_endpoint();
+            info.summary = "Device Unauthorized: Tap 'Allow' on phone screen";
+        } else {
+            info.is_connected = false;
+            info.tunnels_active = false;
+            info.state = DeviceState::DISCONNECTED;
+            info.summary = "Disconnected";
         }
 
         AdbStatusCallback cb;
         {
             std::lock_guard<std::mutex> lock(mutex_);
-            is_adb_connected_ = connected;
-            adb_summary_ = summary;
+            adb_info_ = info;
             cb = adb_cb_;
         }
         if (cb) {
-            cb(connected, summary);
+            cb(info);
         }
     }, [](const std::string& msg) {
         blog(LOG_INFO, "[POBS ADB] %s", msg.c_str());
@@ -247,12 +291,17 @@ AdbManager& PobsService::adb() {
 
 bool PobsService::is_adb_connected() const {
     std::lock_guard<std::mutex> lock(mutex_);
-    return is_adb_connected_;
+    return adb_info_.is_connected && adb_info_.tunnels_active;
 }
 
 std::string PobsService::get_adb_summary() const {
     std::lock_guard<std::mutex> lock(mutex_);
-    return adb_summary_;
+    return adb_info_.summary;
+}
+
+AdbConnectionInfo PobsService::get_adb_info() const {
+    std::lock_guard<std::mutex> lock(mutex_);
+    return adb_info_;
 }
 
 void PobsService::set_adb_status_callback(AdbStatusCallback cb) {

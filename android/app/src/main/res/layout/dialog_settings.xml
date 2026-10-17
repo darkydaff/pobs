@@ -145,7 +145,40 @@
             android:text="Hardware Stabilization (OIS/EIS)"
             android:textColor="#FFFFFF"
             android:textSize="14sp"
-            android:layout_marginBottom="24dp" />
+            android:layout_marginBottom="20dp" />
+
+        <!-- Advanced Network Settings -->
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Advanced Connection Target"
+            android:textColor="#AAAAAA"
+            android:textSize="13sp"
+            android:textStyle="bold"
+            android:layout_marginBottom="6dp" />
+
+        <com.google.android.material.textfield.TextInputLayout
+            android:id="@+id/tilCustomHost"
+            style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:hint="Host Address (default: 127.0.0.1 for USB/ADB reverse)"
+            app:hintTextColor="#71717A"
+            app:boxStrokeColor="#3F3F46"
+            android:textColorHint="#71717A"
+            android:layout_marginBottom="24dp">
+
+            <com.google.android.material.textfield.TextInputEditText
+                android:id="@+id/etCustomHost"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:inputType="textUri"
+                android:singleLine="true"
+                android:text="127.0.0.1"
+                android:textColor="#FFFFFF"
+                android:textSize="14sp" />
+
+        </com.google.android.material.textfield.TextInputLayout>
 
         <!-- Save Button -->
         <com.google.android.material.button.MaterialButton

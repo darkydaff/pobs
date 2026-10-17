@@ -339,15 +339,7 @@ class CameraStreamingService : Service() {
             }
 
             try {
-                try {
-                    socket.connect(InetSocketAddress(targetIp, videoPort), 2000)
-                } catch (e: Exception) {
-                    if (targetIp != "127.0.0.1") {
-                        socket.connect(InetSocketAddress("127.0.0.1", videoPort), 2000)
-                    } else {
-                        throw e
-                    }
-                }
+                socket.connect(InetSocketAddress(targetIp, videoPort), 2000)
                 videoSocket = socket
                 videoOutputStream = DataOutputStream(socket.getOutputStream())
                 isStreaming = true

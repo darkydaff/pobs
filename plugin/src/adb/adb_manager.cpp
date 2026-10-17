@@ -209,6 +209,24 @@ void AdbManager::update_logical_devices(const std::vector<AdbDevice>& raw_device
                 d.active_transport = d.wireless_available ? TransportType::WIRELESS :
                                      (d.usb_available ? TransportType::USB : TransportType::UNKNOWN);
             }
+
+            std::string ep = d.get_active_endpoint();
+            if (!ep.empty() && d.state == DeviceState::CONNECTED) {
+                if (ep == last_verified_tunnel_endpoint_) {
+                    d.tunnels_active = true;
+                } else {
+                    bool p8765 = false, p8766 = false;
+                    d.tunnels_active = verify_tunnels(ep, p8765, p8766);
+                    if (d.tunnels_active) {
+                        last_verified_tunnel_endpoint_ = ep;
+                    }
+                }
+            } else {
+                d.tunnels_active = false;
+                if (ep == last_verified_tunnel_endpoint_) {
+                    last_verified_tunnel_endpoint_.clear();
+                }
+            }
             new_logical.push_back(d);
         }
 
@@ -253,6 +271,105 @@ bool AdbManager::pair(const std::string& host_port, const std::string& code, std
     return false;
 }
 
+bool AdbManager::verify_tunnels(const std::string& endpoint, bool& port_8765, bool& port_8766) {
+    port_8765 = false;
+    port_8766 = false;
+    if (endpoint.empty()) return false;
+
+    std::vector<std::string> args = {"adb"};
+    args.push_back("-s");
+    args.push_back(endpoint);
+    args.push_back("reverse");
+    args.push_back("--list");
+
+    ProcessResult res = run_process(args, 1000);
+    if (res.exit_code != 0) {
+        return false;
+    }
+
+    if (res.stdout_str.find("tcp:8765 tcp:8765") != std::string::npos) {
+        port_8765 = true;
+    }
+    if (res.stdout_str.find("tcp:8766 tcp:8766") != std::string::npos) {
+        port_8766 = true;
+    }
+    return (port_8765 && port_8766);
+}
+
+bool AdbManager::ensure_tunnels(const std::string& endpoint) {
+    if (endpoint.empty()) return false;
+
+    bool p8765 = false, p8766 = false;
+    if (verify_tunnels(endpoint, p8765, p8766)) {
+        std::lock_guard<std::mutex> lock(mutex_);
+        last_verified_tunnel_endpoint_ = endpoint;
+        return true;
+    }
+
+    log("Setting up missing reverse tunnels for endpoint: " + endpoint);
+    if (!p8765) {
+        reverse_port(endpoint, 8765, 8765);
+    }
+    if (!p8766) {
+        reverse_port(endpoint, 8766, 8766);
+    }
+
+    bool ok = verify_tunnels(endpoint, p8765, p8766);
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        if (ok) {
+            last_verified_tunnel_endpoint_ = endpoint;
+        } else {
+            last_verified_tunnel_endpoint_.clear();
+        }
+    }
+    return ok;
+}
+
+void AdbManager::invalidate_tunnel_cache() {
+    std::lock_guard<std::mutex> lock(mutex_);
+    last_verified_tunnel_endpoint_.clear();
+}
+
+std::string AdbManager::try_discover_connect_port(const std::string& ip) {
+    if (ip.empty()) return "";
+
+    // 1. Check if raw devices already show an active connection for this IP
+    auto raw = scan_raw_devices();
+    for (const auto& dev : raw) {
+        if (dev.transport == TransportType::WIRELESS && dev.state == DeviceState::CONNECTED) {
+            if (dev.endpoint.rfind(ip + ":", 0) == 0) {
+                log("Auto-discovered active ADB wireless endpoint: " + dev.endpoint);
+                return dev.endpoint;
+            }
+        }
+    }
+
+    // 2. Query adb mdns services for _adb-tls-connect._tcp
+    ProcessResult res = run_process({"adb", "mdns", "services"}, 2000);
+    if (res.exit_code == 0 && !res.stdout_str.empty()) {
+        std::istringstream stream(res.stdout_str);
+        std::string line;
+        while (std::getline(stream, line)) {
+            if (line.find(ip) != std::string::npos &&
+                line.find("_adb-tls-connect") != std::string::npos) {
+                // Parse IP:port pattern
+                static const std::regex ip_port_rx(R"((\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}):(\d+))");
+                std::smatch match;
+                if (std::regex_search(line, match, ip_port_rx)) {
+                    if (match[1].str() == ip) {
+                        std::string discovered = match[0].str();
+                        log("Discovered wireless connect endpoint via mDNS: " + discovered);
+                        return discovered;
+                    }
+                }
+            }
+        }
+    }
+
+    return "";
+}
+
 bool AdbManager::connect_wireless(const std::string& host_port, std::string& out_msg) {
     if (host_port.empty()) {
         out_msg = "Wireless host:port endpoint is empty";
@@ -265,9 +382,11 @@ bool AdbManager::connect_wireless(const std::string& host_port, std::string& out
 
     if (res.exit_code == 0 && (out_msg.find("connected to") != std::string::npos ||
                               out_msg.find("already connected") != std::string::npos)) {
-        log("Connected wirelessly to " + host_port);
-        reverse_port(host_port, 8765, 8765);
-        reverse_port(host_port, 8766, 8766);
+        log("Connected wirelessly to " + host_port + ". Verifying tunnels...");
+        bool tunnels_ok = ensure_tunnels(host_port);
+        if (!tunnels_ok) {
+            out_msg += " (Warning: reverse tunnel verification failed)";
+        }
         trigger_refresh();
         return true;
     }
@@ -291,10 +410,11 @@ std::string AdbManager::get_active_summary() const {
     for (const auto& dev : logical_devices_) {
         if (dev.state == DeviceState::CONNECTED) {
             std::string ep = dev.get_active_endpoint();
+            std::string prefix = (dev.active_transport == TransportType::USB) ? "[USB] " : "[Wireless] ";
             if (!dev.model.empty()) {
-                return dev.model + " (" + ep + ")";
+                return prefix + dev.model + " (" + ep + ")";
             }
-            return ep;
+            return prefix + ep;
         }
     }
     return "";
@@ -315,6 +435,7 @@ bool AdbManager::reverse_port(const std::string& endpoint, int remote_port, int 
 
 bool AdbManager::disconnect(const std::string& endpoint, std::string& out_msg) {
     log("Disconnecting ADB endpoint: " + endpoint);
+    invalidate_tunnel_cache();
     ProcessResult res = run_process({"adb", "disconnect", endpoint}, 3000);
     out_msg = res.stdout_str;
     trigger_refresh();

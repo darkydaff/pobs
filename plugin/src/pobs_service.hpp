@@ -7,11 +7,11 @@
 #include <atomic>
 #include <thread>
 #include <functional>
+#include "adb/adb_manager.hpp"
 
 namespace pobs {
 
 class PobsWebSocketServer;
-class AdbManager;
 
 struct CompanionStatus {
     std::string device_model = "Disconnected";
@@ -30,6 +30,17 @@ struct CompanionStatus {
     int rotation_degrees = 0;
 };
 
+struct AdbConnectionInfo {
+    bool is_connected = false;
+    bool tunnels_active = false;
+    TransportType transport = TransportType::UNKNOWN;
+    DeviceState state = DeviceState::DISCONNECTED;
+    std::string model;
+    std::string endpoint;
+    std::string summary = "Disconnected";
+    std::vector<LogicalDevice> devices;
+};
+
 class PobsService {
 public:
     static PobsService& instance();
@@ -40,7 +51,7 @@ public:
     using StatusCallback = std::function<void(const CompanionStatus&)>;
     void set_status_callback(StatusCallback cb);
 
-    using AdbStatusCallback = std::function<void(bool connected, const std::string& summary)>;
+    using AdbStatusCallback = std::function<void(const AdbConnectionInfo& info)>;
     void set_adb_status_callback(AdbStatusCallback cb);
 
     CompanionStatus get_status();
@@ -56,6 +67,7 @@ public:
 
     bool is_adb_connected() const;
     std::string get_adb_summary() const;
+    AdbConnectionInfo get_adb_info() const;
     bool connect_adb(const std::string& host_port, std::string& out_msg);
     bool pair_adb(const std::string& host_port, const std::string& code, std::string& out_msg);
 
@@ -67,8 +79,7 @@ private:
     CompanionStatus status_;
     StatusCallback status_cb_;
 
-    bool is_adb_connected_ = false;
-    std::string adb_summary_ = "Disconnected";
+    AdbConnectionInfo adb_info_;
     AdbStatusCallback adb_cb_;
 };
 

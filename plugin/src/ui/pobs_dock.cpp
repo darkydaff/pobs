@@ -52,14 +52,14 @@ PobsDock::PobsDock(QWidget *parent)
         }, Qt::QueuedConnection);
     });
 
-    PobsService::instance().set_adb_status_callback([this](bool connected, const std::string &summary) {
-        QMetaObject::invokeMethod(this, [this, connected, summary]() {
-            update_adb_ui(connected, summary);
+    PobsService::instance().set_adb_status_callback([this](const AdbConnectionInfo &info) {
+        QMetaObject::invokeMethod(this, [this, info]() {
+            update_adb_ui(info);
         }, Qt::QueuedConnection);
     });
 
     load_known_devices();
-    update_adb_ui(PobsService::instance().is_adb_connected(), PobsService::instance().get_adb_summary());
+    update_adb_ui(PobsService::instance().get_adb_info());
     update_status(PobsService::instance().get_status());
 }
 
@@ -134,42 +134,75 @@ void PobsDock::setup_ui() {
     qr_layout->setContentsMargins(0, 4, 0, 4);
     qr_layout->setSpacing(8);
 
+    // USB Auto-Detect Banner Card
+    usb_banner_card_ = new QFrame(qr_view_);
+    usb_banner_card_->setObjectName("usb_banner");
+    usb_banner_card_->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
+    usb_banner_card_->setStyleSheet(
+        "#usb_banner {"
+        "  background-color: rgba(34, 197, 94, 0.12);"
+        "  border: 1px solid rgba(34, 197, 94, 0.35);"
+        "  border-radius: 8px;"
+        "  padding: 8px 12px;"
+        "}");
+    QHBoxLayout *usb_banner_layout = new QHBoxLayout(usb_banner_card_);
+    usb_banner_layout->setContentsMargins(6, 6, 6, 6);
+    usb_banner_layout->setSpacing(8);
+
+    usb_banner_icon_ = new QLabel("⚡", usb_banner_card_);
+    usb_banner_icon_->setStyleSheet("font-size: 16px;");
+
+    usb_banner_text_ = new QLabel(usb_banner_card_);
+    usb_banner_text_->setWordWrap(true);
+    usb_banner_text_->setStyleSheet("font-size: 11px; color: #22c55e; font-weight: 500;");
+
+    usb_banner_layout->addWidget(usb_banner_icon_);
+    usb_banner_layout->addWidget(usb_banner_text_, 1);
+    usb_banner_card_->hide(); // Hidden until USB detected
+
+    qr_layout->addWidget(usb_banner_card_);
+
     setup_adb_card(qr_view_, qr_layout);
 
-    // Divider
-    QFrame *divider = new QFrame(qr_view_);
-    divider->setFrameShape(QFrame::HLine);
-    divider->setStyleSheet("background-color: #27272a; max-height: 1px; margin: 2px 0;");
-    qr_layout->addWidget(divider);
+    // Collapsible Direct LAN Fallback (for non-ADB users)
+    lan_toggle_btn_ = new QPushButton("▼ Advanced: Direct LAN Wi-Fi (No ADB)", qr_view_);
+    lan_toggle_btn_->setStyleSheet("background: transparent; color: #71717a; font-size: 10px; border: none; text-align: left; padding: 4px;");
+    lan_toggle_btn_->setCursor(Qt::PointingHandCursor);
+    connect(lan_toggle_btn_, &QPushButton::clicked, this, &PobsDock::on_lan_toggle_clicked);
+    qr_layout->addWidget(lan_toggle_btn_);
 
-    QLabel *or_label = new QLabel("OR CONNECT VIA DIRECT LAN / QR", qr_view_);
-    or_label->setAlignment(Qt::AlignCenter);
-    or_label->setStyleSheet("color: #71717a; font-size: 10px; font-weight: 700; letter-spacing: 0.5px;");
-    qr_layout->addWidget(or_label);
+    lan_fallback_widget_ = new QWidget(qr_view_);
+    QVBoxLayout *lan_layout = new QVBoxLayout(lan_fallback_widget_);
+    lan_layout->setContentsMargins(0, 2, 0, 4);
+    lan_layout->setSpacing(4);
 
     QString lan_ip = PobsWebSocketServer::get_local_lan_ip();
     QString qr_url = QString("pobs://%1:8765").arg(lan_ip);
 
-    qr_widget_ = new QrCodeWidget(qr_view_);
+    qr_widget_ = new QrCodeWidget(lan_fallback_widget_);
     qr_widget_->set_text(qr_url);
+    qr_widget_->setFixedSize(130, 130);
 
-    qr_hint_label_ = new QLabel("Scan QR code with POBS app", qr_view_);
+    qr_hint_label_ = new QLabel("Direct Wi-Fi fallback. Open Companion Settings to enter LAN IP:", lan_fallback_widget_);
     qr_hint_label_->setAlignment(Qt::AlignCenter);
-    qr_hint_label_->setStyleSheet("color: #71717a; font-size: 11px; margin-top: 2px;");
+    qr_hint_label_->setStyleSheet("color: #71717a; font-size: 10px;");
 
-    ip_pill_label_ = new QLabel(QString("Direct LAN: %1:8765").arg(lan_ip), qr_view_);
+    ip_pill_label_ = new QLabel(QString("ws://%1:8765").arg(lan_ip), lan_fallback_widget_);
     ip_pill_label_->setAlignment(Qt::AlignCenter);
     ip_pill_label_->setStyleSheet(
         "background-color: #27272a;"
         "color: #a1a1aa;"
         "border-radius: 4px;"
-        "padding: 3px 8px;"
+        "padding: 2px 6px;"
         "font-family: monospace;"
-        "font-size: 11px;");
+        "font-size: 10px;");
 
-    qr_layout->addWidget(qr_widget_, 0, Qt::AlignCenter);
-    qr_layout->addWidget(qr_hint_label_, 0, Qt::AlignCenter);
-    qr_layout->addWidget(ip_pill_label_, 0, Qt::AlignCenter);
+    lan_layout->addWidget(qr_widget_, 0, Qt::AlignCenter);
+    lan_layout->addWidget(qr_hint_label_, 0, Qt::AlignCenter);
+    lan_layout->addWidget(ip_pill_label_, 0, Qt::AlignCenter);
+
+    lan_fallback_widget_->hide(); // Hidden by default
+    qr_layout->addWidget(lan_fallback_widget_);
     qr_layout->addStretch();
 
     // 2. Controls View
@@ -501,14 +534,19 @@ void PobsDock::setup_adb_card(QWidget *parent, QVBoxLayout *parent_layout) {
     known_btn_row->addWidget(pair_new_link_btn_);
     known_layout->addLayout(known_btn_row);
 
-    // --- Mode 1: Pair New Device ---
+    // --- Mode 1: Step 1: Pair New Device (Code & Pair Port) ---
     pair_mode_widget_ = new QWidget(adb_mode_stack_);
     QVBoxLayout *pair_layout = new QVBoxLayout(pair_mode_widget_);
     pair_layout->setContentsMargins(0, 4, 0, 0);
     pair_layout->setSpacing(6);
 
-    QLabel *pair_desc = new QLabel("Developer options > Wireless debugging > Pair device with pairing code:", pair_mode_widget_);
-    pair_desc->setStyleSheet("color: #d4d4d8; font-size: 11px;");
+    QLabel *step1_title = new QLabel("Step 1 of 2: Wi-Fi Pairing Code", pair_mode_widget_);
+    step1_title->setStyleSheet("color: #60a5fa; font-weight: 700; font-size: 11px;");
+    pair_layout->addWidget(step1_title);
+
+    QLabel *pair_desc = new QLabel("On phone: Developer options > Wireless debugging > 'Pair device with pairing code':", pair_mode_widget_);
+    pair_desc->setStyleSheet("color: #a1a1aa; font-size: 10px;");
+    pair_desc->setWordWrap(true);
     pair_layout->addWidget(pair_desc);
 
     new_name_edit_ = new QLineEdit(pair_mode_widget_);
@@ -526,22 +564,15 @@ void PobsDock::setup_adb_card(QWidget *parent, QVBoxLayout *parent_layout) {
     pair_row1->addWidget(new_pair_port_edit_, 2);
     pair_layout->addLayout(pair_row1);
 
-    QHBoxLayout *pair_row2 = new QHBoxLayout();
     new_pin_edit_ = new QLineEdit(pair_mode_widget_);
-    new_pin_edit_->setPlaceholderText("6-digit Code (e.g. 123456)");
-
-    new_connect_port_edit_ = new QLineEdit(pair_mode_widget_);
-    new_connect_port_edit_->setPlaceholderText("Connecting Port (e.g. 44517)");
-
-    pair_row2->addWidget(new_pin_edit_, 1);
-    pair_row2->addWidget(new_connect_port_edit_, 1);
-    pair_layout->addLayout(pair_row2);
+    new_pin_edit_->setPlaceholderText("6-digit Code from pop-up (e.g. 123456)");
+    pair_layout->addWidget(new_pin_edit_);
 
     QHBoxLayout *pair_btn_row = new QHBoxLayout();
-    new_pair_btn_ = new QPushButton("Pair & Connect", pair_mode_widget_);
+    new_pair_btn_ = new QPushButton("Pair Device", pair_mode_widget_);
     new_pair_btn_->setStyleSheet("background-color: #2563eb; color: #ffffff; font-weight: 600; padding: 6px 14px; border-radius: 6px; border: none;");
     new_pair_btn_->setCursor(Qt::PointingHandCursor);
-    connect(new_pair_btn_, &QPushButton::clicked, this, &PobsDock::on_pair_new_clicked);
+    connect(new_pair_btn_, &QPushButton::clicked, this, &PobsDock::on_pair_step1_clicked);
 
     cancel_pair_btn_ = new QPushButton("Cancel", pair_mode_widget_);
     cancel_pair_btn_->setStyleSheet("background: #27272a; color: #a1a1aa; padding: 6px 12px; border-radius: 6px; border: none;");
@@ -552,7 +583,45 @@ void PobsDock::setup_adb_card(QWidget *parent, QVBoxLayout *parent_layout) {
     pair_btn_row->addWidget(cancel_pair_btn_);
     pair_layout->addLayout(pair_btn_row);
 
-    // --- Mode 2: Connected Device Summary ---
+    // --- Mode 2: Step 2: Connect Port (Shown if auto-discovery couldn't resolve port) ---
+    step2_mode_widget_ = new QWidget(adb_mode_stack_);
+    QVBoxLayout *step2_layout = new QVBoxLayout(step2_mode_widget_);
+    step2_layout->setContentsMargins(0, 4, 0, 0);
+    step2_layout->setSpacing(6);
+
+    QLabel *step2_title = new QLabel("Step 2 of 2: Enter Connect Port", step2_mode_widget_);
+    step2_title->setStyleSheet("color: #22c55e; font-weight: 700; font-size: 11px;");
+    step2_layout->addWidget(step2_title);
+
+    step2_ip_label_ = new QLabel(step2_mode_widget_);
+    step2_ip_label_->setStyleSheet("color: #d4d4d8; font-size: 11px;");
+    step2_layout->addWidget(step2_ip_label_);
+
+    QLabel *step2_desc = new QLabel("Pairing succeeded! Look at the 'IP address & Port' on your phone's Wireless debugging screen:", step2_mode_widget_);
+    step2_desc->setStyleSheet("color: #a1a1aa; font-size: 10px;");
+    step2_desc->setWordWrap(true);
+    step2_layout->addWidget(step2_desc);
+
+    step2_connect_port_edit_ = new QLineEdit(step2_mode_widget_);
+    step2_connect_port_edit_->setPlaceholderText("Connect Port (e.g. 46325)");
+    step2_layout->addWidget(step2_connect_port_edit_);
+
+    QHBoxLayout *step2_btn_row = new QHBoxLayout();
+    step2_connect_btn_ = new QPushButton("⚡ Connect Device", step2_mode_widget_);
+    step2_connect_btn_->setStyleSheet("background-color: #2563eb; color: #ffffff; font-weight: 600; padding: 6px 14px; border-radius: 6px; border: none;");
+    step2_connect_btn_->setCursor(Qt::PointingHandCursor);
+    connect(step2_connect_btn_, &QPushButton::clicked, this, &PobsDock::on_pair_step2_connect_clicked);
+
+    step2_cancel_btn_ = new QPushButton("Back", step2_mode_widget_);
+    step2_cancel_btn_->setStyleSheet("background: #27272a; color: #a1a1aa; padding: 6px 12px; border-radius: 6px; border: none;");
+    step2_cancel_btn_->setCursor(Qt::PointingHandCursor);
+    connect(step2_cancel_btn_, &QPushButton::clicked, this, &PobsDock::on_switch_to_pair_mode);
+
+    step2_btn_row->addWidget(step2_connect_btn_);
+    step2_btn_row->addWidget(step2_cancel_btn_);
+    step2_layout->addLayout(step2_btn_row);
+
+    // --- Mode 3: Connected Device Summary ---
     connected_mode_widget_ = new QWidget(adb_mode_stack_);
     QVBoxLayout *conn_layout = new QVBoxLayout(connected_mode_widget_);
     conn_layout->setContentsMargins(0, 4, 0, 0);
@@ -570,7 +639,8 @@ void PobsDock::setup_adb_card(QWidget *parent, QVBoxLayout *parent_layout) {
 
     adb_mode_stack_->addWidget(known_mode_widget_);      // 0
     adb_mode_stack_->addWidget(pair_mode_widget_);       // 1
-    adb_mode_stack_->addWidget(connected_mode_widget_);  // 2
+    adb_mode_stack_->addWidget(step2_mode_widget_);      // 2
+    adb_mode_stack_->addWidget(connected_mode_widget_);  // 3
     card_layout->addWidget(adb_mode_stack_);
 
     parent_layout->addWidget(adb_card_);
@@ -726,28 +796,28 @@ void PobsDock::on_connect_known_clicked() {
     }).detach();
 }
 
-void PobsDock::on_pair_new_clicked() {
+void PobsDock::on_pair_step1_clicked() {
     QString name = new_name_edit_->text().trimmed();
     QString ip = new_ip_edit_->text().trimmed();
     QString pair_port = new_pair_port_edit_->text().trimmed();
     QString pin = new_pin_edit_->text().trimmed();
-    QString connect_port = new_connect_port_edit_->text().trimmed();
 
-    if (ip.isEmpty() || pair_port.isEmpty() || pin.isEmpty() || connect_port.isEmpty()) {
-        adb_status_msg_->setText("Error: IP, Pairing Port, PIN, and Connect Port are all required.");
+    if (ip.isEmpty() || pair_port.isEmpty() || pin.isEmpty()) {
+        adb_status_msg_->setText("Error: IP, Pairing Port, and PIN are required.");
         adb_status_msg_->setStyleSheet("font-size: 11px; color: #ef4444;");
         return;
     }
 
-    if (name.isEmpty()) name = "My Phone";
+    if (name.isEmpty()) name = "Android Phone";
+    pending_pair_name_ = name;
+    pending_pair_ip_ = ip;
 
     new_pair_btn_->setEnabled(false);
     adb_status_msg_->setText(QString("Pairing with %1:%2...").arg(ip, pair_port));
     adb_status_msg_->setStyleSheet("font-size: 11px; color: #3b82f6;");
 
-    std::thread([this, name, ip, pair_port, pin, connect_port]() {
+    std::thread([this, name, ip, pair_port, pin]() {
         std::string pair_endpoint = (ip + ":" + pair_port).toStdString();
-        std::string connect_endpoint = (ip + ":" + connect_port).toStdString();
         std::string out_msg;
 
         bool pair_ok = PobsService::instance().pair_adb(pair_endpoint, pin.toStdString(), out_msg);
@@ -760,27 +830,95 @@ void PobsDock::on_pair_new_clicked() {
             return;
         }
 
-        // Pair succeeded, now connect!
-        QMetaObject::invokeMethod(this, [this, ip, connect_port]() {
-            adb_status_msg_->setText(QString("Pairing successful! Connecting to %1:%2...").arg(ip, connect_port));
-            adb_status_msg_->setStyleSheet("font-size: 11px; color: #3b82f6;");
+        // Pair succeeded! Attempt auto-discovery for 2 seconds
+        QMetaObject::invokeMethod(this, [this]() {
+            adb_status_msg_->setText("Pairing successful! Probing for connection port...");
+            adb_status_msg_->setStyleSheet("font-size: 11px; color: #22c55e;");
         }, Qt::QueuedConnection);
 
+        std::string discovered_endpoint;
+        for (int i = 0; i < 4; ++i) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(500));
+            discovered_endpoint = PobsService::instance().adb().try_discover_connect_port(ip.toStdString());
+            if (!discovered_endpoint.empty()) break;
+        }
+
+        if (!discovered_endpoint.empty()) {
+            // Auto-discovered! Connect immediately
+            std::string conn_out;
+            bool conn_ok = PobsService::instance().connect_adb(discovered_endpoint, conn_out);
+            QMetaObject::invokeMethod(this, [this, conn_ok, name, ip, discovered_endpoint]() {
+                new_pair_btn_->setEnabled(true);
+                if (conn_ok) {
+                    QString port = QString::fromStdString(discovered_endpoint).section(':', 1);
+                    add_or_update_known_device(name, ip, port);
+                    adb_status_msg_->setText("Auto-discovered & connected! Tunnels active.");
+                    adb_status_msg_->setStyleSheet("font-size: 11px; color: #22c55e;");
+                    adb_mode_stack_->setCurrentWidget(connected_mode_widget_);
+                } else {
+                    step2_ip_label_->setText(QString("Phone: %1 (%2)").arg(name, ip));
+                    step2_connect_port_edit_->clear();
+                    adb_mode_stack_->setCurrentWidget(step2_mode_widget_);
+                    step2_connect_port_edit_->setFocus();
+                }
+            }, Qt::QueuedConnection);
+        } else {
+            // Transition to Step 2 for manual connect port
+            QMetaObject::invokeMethod(this, [this, name, ip]() {
+                new_pair_btn_->setEnabled(true);
+                step2_ip_label_->setText(QString("Phone: %1 (%2)").arg(name, ip));
+                step2_connect_port_edit_->clear();
+                adb_status_msg_->setText("Paired! Enter the Connect Port shown on your phone:");
+                adb_status_msg_->setStyleSheet("font-size: 11px; color: #3b82f6;");
+                adb_mode_stack_->setCurrentWidget(step2_mode_widget_);
+                step2_connect_port_edit_->setFocus();
+            }, Qt::QueuedConnection);
+        }
+    }).detach();
+}
+
+void PobsDock::on_pair_step2_connect_clicked() {
+    QString port = step2_connect_port_edit_->text().trimmed();
+    if (port.isEmpty()) {
+        adb_status_msg_->setText("Error: Connect port is required.");
+        adb_status_msg_->setStyleSheet("font-size: 11px; color: #ef4444;");
+        return;
+    }
+
+    step2_connect_btn_->setEnabled(false);
+    adb_status_msg_->setText(QString("Connecting to %1:%2...").arg(pending_pair_ip_, port));
+    adb_status_msg_->setStyleSheet("font-size: 11px; color: #3b82f6;");
+
+    QString name = pending_pair_name_;
+    QString ip = pending_pair_ip_;
+    std::string endpoint = (ip + ":" + port).toStdString();
+
+    std::thread([this, name, ip, port, endpoint]() {
         std::string conn_out;
-        bool conn_ok = PobsService::instance().connect_adb(connect_endpoint, conn_out);
-        QMetaObject::invokeMethod(this, [this, conn_ok, conn_out, name, ip, connect_port]() {
-            new_pair_btn_->setEnabled(true);
+        bool conn_ok = PobsService::instance().connect_adb(endpoint, conn_out);
+        QMetaObject::invokeMethod(this, [this, conn_ok, conn_out, name, ip, port]() {
+            step2_connect_btn_->setEnabled(true);
             if (conn_ok) {
-                add_or_update_known_device(name, ip, connect_port);
-                adb_status_msg_->setText("Paired and connected successfully! Ports reversed.");
+                add_or_update_known_device(name, ip, port);
+                adb_status_msg_->setText("Connected successfully! Tunnels active.");
                 adb_status_msg_->setStyleSheet("font-size: 11px; color: #22c55e;");
                 adb_mode_stack_->setCurrentWidget(connected_mode_widget_);
             } else {
-                adb_status_msg_->setText("Paired, but connection to port failed: " + QString::fromStdString(conn_out).trimmed());
+                adb_status_msg_->setText("Connection failed: " + QString::fromStdString(conn_out).trimmed());
                 adb_status_msg_->setStyleSheet("font-size: 11px; color: #ef4444;");
             }
         }, Qt::QueuedConnection);
     }).detach();
+}
+
+void PobsDock::on_lan_toggle_clicked() {
+    bool now_visible = !lan_fallback_widget_->isVisible();
+    lan_fallback_widget_->setVisible(now_visible);
+    if (now_visible) {
+        lan_toggle_btn_->setText("▲ Hide Direct LAN Wi-Fi");
+    } else {
+        lan_toggle_btn_->setText("▼ Advanced: Direct LAN Wi-Fi (No ADB)");
+    }
 }
 
 void PobsDock::on_switch_to_pair_mode() {
@@ -788,7 +926,6 @@ void PobsDock::on_switch_to_pair_mode() {
     new_ip_edit_->setText(known_ip_edit_->text());
     new_pair_port_edit_->clear();
     new_pin_edit_->clear();
-    new_connect_port_edit_->clear();
     new_pair_port_edit_->setFocus();
 }
 
@@ -812,12 +949,79 @@ void PobsDock::on_adb_header_clicked() {
     }
 }
 
-void PobsDock::update_adb_ui(bool connected, const std::string &summary) {
-    is_adb_connected_ = connected;
-    QString qsummary = QString::fromStdString(summary);
+void PobsDock::update_adb_ui(const AdbConnectionInfo &info) {
+    is_adb_connected_ = info.is_connected && info.tunnels_active;
 
-    if (connected) {
-        adb_header_btn_->setText("⚡ ADB: Connected");
+    if (info.transport == TransportType::USB) {
+        if (info.is_connected && info.tunnels_active) {
+            usb_banner_card_->setStyleSheet(
+                "#usb_banner {"
+                "  background-color: rgba(34, 197, 94, 0.12);"
+                "  border: 1px solid rgba(34, 197, 94, 0.35);"
+                "  border-radius: 8px;"
+                "  padding: 8px 12px;"
+                "}");
+            usb_banner_icon_->setText("⚡");
+            usb_banner_text_->setStyleSheet("font-size: 11px; color: #22c55e; font-weight: 500;");
+            QString name = info.model.empty() ? "Pixel / Android Device" : QString::fromStdString(info.model);
+            usb_banner_text_->setText(QString("<b>USB Plug-and-Play:</b> %1 • Reverse Tunnels Active").arg(name));
+            usb_banner_card_->show();
+
+            adb_header_btn_->setText("⚡ USB: Ready");
+            adb_header_btn_->setStyleSheet(
+                "background-color: rgba(34, 197, 94, 0.15);"
+                "color: #22c55e;"
+                "border: 1px solid rgba(34, 197, 94, 0.3);"
+                "border-radius: 4px;"
+                "padding: 2px 8px;"
+                "font-size: 11px;"
+                "font-weight: 600;");
+
+            adb_status_badge_->setText("● TUNNELS ACTIVE");
+            adb_status_badge_->setStyleSheet("font-size: 10px; font-weight: 700; color: #22c55e; padding: 2px 6px; border-radius: 4px; background: rgba(34, 197, 94, 0.15);");
+            adb_status_msg_->setText(QString("USB Connected to %1. Ports 8765/8766 forwarded. Open companion app on phone.").arg(name));
+            adb_status_msg_->setStyleSheet("font-size: 11px; color: #22c55e;");
+
+            connected_summary_label_->setText(QString("USB Connected: %1 (%2)\nReverse tunnels active on 127.0.0.1:8765/8766")
+                .arg(name, QString::fromStdString(info.endpoint)));
+            adb_mode_stack_->setCurrentWidget(connected_mode_widget_);
+            return;
+        } else if (info.state == DeviceState::UNAUTHORIZED) {
+            usb_banner_card_->setStyleSheet(
+                "#usb_banner {"
+                "  background-color: rgba(245, 158, 11, 0.12);"
+                "  border: 1px solid rgba(245, 158, 11, 0.35);"
+                "  border-radius: 8px;"
+                "  padding: 8px 12px;"
+                "}");
+            usb_banner_icon_->setText("⚠️");
+            usb_banner_text_->setStyleSheet("font-size: 11px; color: #f59e0b; font-weight: 500;");
+            usb_banner_text_->setText("<b>USB Detected:</b> Please unlock your phone and tap 'Allow USB debugging'.");
+            usb_banner_card_->show();
+
+            adb_header_btn_->setText("⚠️ USB: Unauthorized");
+            adb_header_btn_->setStyleSheet(
+                "background-color: rgba(245, 158, 11, 0.15);"
+                "color: #f59e0b;"
+                "border: 1px solid rgba(245, 158, 11, 0.3);"
+                "border-radius: 4px;"
+                "padding: 2px 8px;"
+                "font-size: 11px;"
+                "font-weight: 600;");
+
+            adb_status_badge_->setText("● UNAUTHORIZED");
+            adb_status_badge_->setStyleSheet("font-size: 10px; font-weight: 700; color: #f59e0b; padding: 2px 6px; border-radius: 4px; background: rgba(245, 158, 11, 0.15);");
+            adb_status_msg_->setText("Action required: Look at your phone's screen and tap 'Always allow from this computer'.");
+            adb_status_msg_->setStyleSheet("font-size: 11px; color: #f59e0b;");
+            return;
+        }
+    }
+
+    // Not USB
+    usb_banner_card_->hide();
+
+    if (info.is_connected && info.tunnels_active) {
+        adb_header_btn_->setText("⚡ Wireless: Ready");
         adb_header_btn_->setStyleSheet(
             "background-color: rgba(34, 197, 94, 0.15);"
             "color: #22c55e;"
@@ -827,15 +1031,17 @@ void PobsDock::update_adb_ui(bool connected, const std::string &summary) {
             "font-size: 11px;"
             "font-weight: 600;");
 
-        adb_status_badge_->setText("● CONNECTED");
+        adb_status_badge_->setText("● TUNNELS ACTIVE");
         adb_status_badge_->setStyleSheet("font-size: 10px; font-weight: 700; color: #22c55e; padding: 2px 6px; border-radius: 4px; background: rgba(34, 197, 94, 0.15);");
 
-        adb_status_msg_->setText("Wireless ADB reverse active. Ports 8765 and 8766 forwarded to phone.");
+        adb_status_msg_->setText(QString("Wireless ADB active (%1). Ports 8765/8766 forwarded.").arg(QString::fromStdString(info.endpoint)));
         adb_status_msg_->setStyleSheet("font-size: 11px; color: #22c55e;");
 
-        connected_summary_label_->setText(QString("Connected to %1\nReverse tunnels ready on 127.0.0.1:8765/8766").arg(qsummary));
+        connected_summary_label_->setText(QString("Connected to %1 (%2)\nReverse tunnels active on 127.0.0.1:8765/8766")
+            .arg(QString::fromStdString(info.model), QString::fromStdString(info.endpoint)));
 
-        if (adb_mode_stack_->currentWidget() != pair_mode_widget_) {
+        if (adb_mode_stack_->currentWidget() != pair_mode_widget_ &&
+            adb_mode_stack_->currentWidget() != step2_mode_widget_) {
             adb_mode_stack_->setCurrentWidget(connected_mode_widget_);
         }
     } else {
@@ -859,9 +1065,8 @@ void PobsDock::update_adb_ui(bool connected, const std::string &summary) {
                 adb_mode_stack_->setCurrentWidget(pair_mode_widget_);
             }
         }
-
-        adb_status_msg_->setText("⚠️ ADB is not connected. Enter your wireless debugging port below to connect:");
-        adb_status_msg_->setStyleSheet("font-size: 11px; color: #f59e0b; font-weight: 500;");
+        adb_status_msg_->setText("ADB not connected. Plug in USB cable or enter wireless debugging port below:");
+        adb_status_msg_->setStyleSheet("font-size: 11px; color: #a1a1aa;");
     }
 }
 

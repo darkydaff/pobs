@@ -28,8 +28,6 @@ import com.darkydaff.pobs.service.CameraStreamingService.OrientationMode
 import com.google.android.material.button.MaterialButton
 import com.google.android.material.button.MaterialButtonToggleGroup
 import com.google.android.material.switchmaterial.SwitchMaterial
-import com.journeyapps.barcodescanner.ScanContract
-import com.journeyapps.barcodescanner.ScanOptions
 
 class MainActivity : AppCompatActivity() {
 
@@ -62,7 +60,6 @@ class MainActivity : AppCompatActivity() {
     private lateinit var btnGrid: MaterialButton
     private lateinit var btnTorch: MaterialButton
     private lateinit var btnDimScreen: MaterialButton
-    private lateinit var btnScanQr: MaterialButton
     private lateinit var tvZoomBadge: TextView
     private lateinit var btnPauseStream: ImageButton
     private lateinit var pauseOverlay: View
@@ -71,16 +68,6 @@ class MainActivity : AppCompatActivity() {
     private var orientationEventListener: OrientationEventListener? = null
     private var isUpdatingTogglesProgrammatically = false
     private var isScreenDimmed = false
-
-    private val barcodeLauncher = registerForActivityResult(ScanContract()) { result ->
-        if (result.contents != null) {
-            val scanned = result.contents.trim()
-            val host = scanned.removePrefix("pobs://")
-            prefsRepo.saveLastHost(host)
-            Toast.makeText(this, "Connecting to OBS ($host)...", Toast.LENGTH_SHORT).show()
-            startStreamingService(host)
-        }
-    }
 
     private val permissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
@@ -126,7 +113,6 @@ class MainActivity : AppCompatActivity() {
         btnGrid = findViewById(R.id.btnGrid)
         btnTorch = findViewById(R.id.btnTorch)
         btnDimScreen = findViewById(R.id.btnDimScreen)
-        btnScanQr = findViewById(R.id.btnScanQr)
         tvZoomBadge = findViewById(R.id.tvZoomBadge)
         btnPauseStream = findViewById(R.id.btnPauseStream)
         pauseOverlay = findViewById(R.id.pauseOverlay)
@@ -251,17 +237,6 @@ class MainActivity : AppCompatActivity() {
         btnOpenSettings.setOnClickListener {
             it.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
             showSettingsDialog()
-        }
-
-        btnScanQr.setOnClickListener {
-            it.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
-            val options = ScanOptions().apply {
-                setPrompt("Scan OBS Studio QR Code")
-                setBeepEnabled(true)
-                setOrientationLocked(false)
-                setBarcodeImageEnabled(false)
-            }
-            barcodeLauncher.launch(options)
         }
 
         checkPermissionsAndStart()
@@ -581,15 +556,26 @@ class MainActivity : AppCompatActivity() {
 
         val switchStab = dialog.findViewById<SwitchMaterial>(R.id.switchStabilization)
         val switchLowLatency = dialog.findViewById<SwitchMaterial>(R.id.switchUltraLowLatency)
+        val etCustomHost = dialog.findViewById<com.google.android.material.textfield.TextInputEditText>(R.id.etCustomHost)
         val btnSave = dialog.findViewById<MaterialButton>(R.id.btnSaveSettings)
 
         switchStab.isChecked = prefsRepo.isStabilizationEnabled()
         switchLowLatency.isChecked = prefsRepo.isUltraLowLatency()
+        val currentHost = prefsRepo.getLastHost() ?: "127.0.0.1"
+        etCustomHost?.setText(currentHost)
 
         btnSave.setOnClickListener {
             prefsRepo.setStabilizationEnabled(switchStab.isChecked)
             prefsRepo.setUltraLowLatency(switchLowLatency.isChecked)
+            val newHost = etCustomHost?.text?.toString()?.trim()
+            val hostToSave = if (newHost.isNullOrEmpty()) "127.0.0.1" else newHost
+            val hostChanged = (hostToSave != prefsRepo.getLastHost())
+            prefsRepo.saveLastHost(hostToSave)
+
             triggerReconfiguration()
+            if (hostChanged) {
+                startStreamingService(hostToSave)
+            }
             dialog.dismiss()
         }
 

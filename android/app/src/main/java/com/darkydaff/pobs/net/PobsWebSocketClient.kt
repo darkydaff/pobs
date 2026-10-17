@@ -23,7 +23,8 @@ class PobsWebSocketClient(
 ) {
     companion object {
         private const val TAG = "POBS_WS"
-        private const val RECONNECT_DELAY_MS = 3000L
+        private const val MIN_RECONNECT_DELAY_MS = 1500L
+        private const val MAX_RECONNECT_DELAY_MS = 5000L
     }
 
     interface Listener {
@@ -51,6 +52,7 @@ class PobsWebSocketClient(
 
     private val mainHandler = Handler(Looper.getMainLooper())
     private var isReconnecting = false
+    private var currentRetryDelayMs = MIN_RECONNECT_DELAY_MS
 
     private val reconnectRunnable = Runnable {
         if (!isConnected && currentHost != null) {
@@ -61,6 +63,7 @@ class PobsWebSocketClient(
 
     fun connect(host: String, port: Int = 8765) {
         currentHost = host
+        currentRetryDelayMs = MIN_RECONNECT_DELAY_MS
         connectInternal(port)
     }
 
@@ -84,6 +87,7 @@ class PobsWebSocketClient(
             override fun onOpen(ws: WebSocket, response: Response) {
                 Log.i(TAG, "Connected to OBS WebSocket at $url!")
                 isConnected = true
+                currentRetryDelayMs = MIN_RECONNECT_DELAY_MS
                 mainHandler.removeCallbacks(reconnectRunnable)
                 sendHandshake()
                 listener?.onConnectionStateChanged(true)
@@ -105,13 +109,6 @@ class PobsWebSocketClient(
                 Log.w(TAG, "WebSocket connection failed to $url: ${t.message}")
                 isConnected = false
                 listener?.onConnectionStateChanged(false)
-
-                if (currentHost != null && !currentHost!!.contains("127.0.0.1")) {
-                    Log.i(TAG, "Falling back to ADB reverse tunnel (127.0.0.1:8765)...")
-                    currentHost = "127.0.0.1:8765"
-                    connectInternal()
-                    return
-                }
                 scheduleReconnect()
             }
         })
@@ -120,7 +117,10 @@ class PobsWebSocketClient(
     private fun scheduleReconnect() {
         mainHandler.removeCallbacks(reconnectRunnable)
         if (currentHost != null) {
-            mainHandler.postDelayed(reconnectRunnable, RECONNECT_DELAY_MS)
+            val delay = currentRetryDelayMs
+            Log.d(TAG, "Scheduling reconnect to $currentHost in ${delay}ms...")
+            mainHandler.postDelayed(reconnectRunnable, delay)
+            currentRetryDelayMs = (currentRetryDelayMs * 1.5).toLong().coerceAtMost(MAX_RECONNECT_DELAY_MS)
         }
     }
 

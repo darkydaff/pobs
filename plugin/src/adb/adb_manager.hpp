@@ -42,6 +42,7 @@ struct LogicalDevice {
     bool usb_available = false;
     TransportType active_transport = TransportType::UNKNOWN;
     DeviceState state = DeviceState::DISCONNECTED;
+    bool tunnels_active = false;
 
     std::string get_active_endpoint() const {
         if (active_transport == TransportType::WIRELESS && wireless_available) {
@@ -84,8 +85,14 @@ public:
     bool is_connected() const;
     std::string get_active_summary() const;
 
-    // Port reversal for companion WebSocket
+    // Port reversal & verification for companion WebSocket (8765) and Video stream (8766)
     bool reverse_port(const std::string& endpoint, int remote_port, int local_port);
+    bool verify_tunnels(const std::string& endpoint, bool& port_8765, bool& port_8766);
+    bool ensure_tunnels(const std::string& endpoint);
+    void invalidate_tunnel_cache();
+
+    // Auto-discovery of connect port (after pairing or for known device)
+    std::string try_discover_connect_port(const std::string& ip);
 
     // Query hardware serial for deduplication
     std::string query_hardware_serial(const std::string& endpoint);
@@ -99,6 +106,7 @@ private:
     mutable std::mutex mutex_;
     std::vector<LogicalDevice> logical_devices_;
     std::map<std::string, std::string> serial_cache_; // endpoint -> hardware_serial
+    std::string last_verified_tunnel_endpoint_;
 
     std::atomic<bool> monitoring_{false};
     std::thread monitor_thread_;
