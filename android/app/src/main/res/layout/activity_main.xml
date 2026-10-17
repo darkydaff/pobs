@@ -157,6 +157,13 @@
                     android:layout_height="wrap_content"
                     android:layout_gravity="center" />
 
+                <!-- Studio Cinema Framing & Reticles Overlay -->
+                <com.darkydaff.pobs.ui.StudioFramingOverlayView
+                    android:id="@+id/framingOverlay"
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent"
+                    android:background="@drawable/bg_tally_idle" />
+
                 <!-- Center Pause Standby Placeholder -->
                 <LinearLayout
                     android:id="@+id/pauseOverlay"
@@ -408,63 +415,80 @@
                 android:layout_width="wrap_content"
                 android:layout_height="match_parent"
                 android:text="Auto"
-                android:textSize="11sp"
+                android:textSize="10.5sp"
                 android:fontFamily="sans-serif-medium"
                 android:textColor="#D4D4D8"
                 app:icon="@drawable/ic_orientation_auto"
                 app:iconGravity="textStart"
                 app:iconPadding="4dp"
-                app:iconSize="16dp"
+                app:iconSize="15dp"
                 app:iconTint="#60A5FA"
                 app:cornerRadius="8dp"
                 app:strokeColor="#3F3F46"
                 app:backgroundTint="#27272A"
-                android:layout_marginEnd="6dp" />
+                android:layout_marginEnd="4dp" />
+
+            <!-- Framing Grid Toggle Button -->
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnGrid"
+                style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+                android:layout_width="38dp"
+                android:layout_height="match_parent"
+                app:icon="@drawable/ic_grid"
+                app:iconGravity="textStart"
+                app:iconPadding="0dp"
+                app:iconSize="16dp"
+                app:iconTint="#71717A"
+                app:cornerRadius="8dp"
+                app:strokeColor="#3F3F46"
+                app:backgroundTint="#27272A"
+                android:contentDescription="Toggle Framing Grid"
+                android:layout_marginEnd="4dp" />
 
             <!-- Torch Key Light Button -->
             <com.google.android.material.button.MaterialButton
                 android:id="@+id/btnTorch"
                 style="@style/Widget.MaterialComponents.Button.OutlinedButton"
-                android:layout_width="44dp"
+                android:layout_width="38dp"
                 android:layout_height="match_parent"
                 app:icon="@drawable/ic_flashlight"
                 app:iconGravity="textStart"
                 app:iconPadding="0dp"
-                app:iconSize="18dp"
+                app:iconSize="16dp"
                 app:iconTint="#D4D4D8"
                 app:cornerRadius="8dp"
                 app:strokeColor="#3F3F46"
                 app:backgroundTint="#27272A"
                 android:contentDescription="Toggle Torch"
-                android:layout_marginEnd="6dp" />
+                android:layout_marginEnd="4dp" />
 
             <!-- OLED Screen Dim Button -->
             <com.google.android.material.button.MaterialButton
                 android:id="@+id/btnDimScreen"
                 style="@style/Widget.MaterialComponents.Button.OutlinedButton"
-                android:layout_width="44dp"
+                android:layout_width="38dp"
                 android:layout_height="match_parent"
                 app:icon="@drawable/ic_dim"
                 app:iconGravity="textStart"
                 app:iconPadding="0dp"
-                app:iconSize="18dp"
+                app:iconSize="16dp"
                 app:iconTint="#D4D4D8"
                 app:cornerRadius="8dp"
                 app:strokeColor="#3F3F46"
                 app:backgroundTint="#27272A"
                 android:contentDescription="Dim Screen"
-                android:layout_marginEnd="6dp" />
+                android:layout_marginEnd="4dp" />
 
             <!-- QR Scanner Button -->
             <com.google.android.material.button.MaterialButton
                 android:id="@+id/btnScanQr"
                 style="@style/Widget.MaterialComponents.Button.OutlinedButton"
-                android:layout_width="44dp"
+                android:layout_width="38dp"
                 android:layout_height="match_parent"
                 app:icon="@drawable/ic_qr_scan"
                 app:iconGravity="textStart"
                 app:iconPadding="0dp"
-                app:iconSize="18dp"
+                app:iconSize="16dp"
                 app:iconTint="#D4D4D8"
                 app:cornerRadius="8dp"
                 app:strokeColor="#3F3F46"

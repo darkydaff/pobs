@@ -38,6 +38,7 @@ class MainActivity : AppCompatActivity() {
 
     private lateinit var viewfinderCard: CardView
     private lateinit var previewTextureView: AutoFitTextureView
+    private lateinit var framingOverlay: StudioFramingOverlayView
     private lateinit var overlayControls: View
     private lateinit var tvStreamBadge: TextView
     private lateinit var tvBattery: TextView
@@ -58,6 +59,7 @@ class MainActivity : AppCompatActivity() {
 
     private lateinit var btnFlipCamera: MaterialButton
     private lateinit var btnOrientation: MaterialButton
+    private lateinit var btnGrid: MaterialButton
     private lateinit var btnTorch: MaterialButton
     private lateinit var btnDimScreen: MaterialButton
     private lateinit var btnScanQr: MaterialButton
@@ -100,6 +102,7 @@ class MainActivity : AppCompatActivity() {
         viewfinderCard.clipToOutline = true
 
         previewTextureView = findViewById(R.id.previewTextureView)
+        framingOverlay = findViewById(R.id.framingOverlay)
         overlayControls = findViewById(R.id.overlayControls)
         tvStreamBadge = findViewById(R.id.tvStreamBadge)
         tvBattery = findViewById(R.id.tvBattery)
@@ -120,6 +123,7 @@ class MainActivity : AppCompatActivity() {
 
         btnFlipCamera = findViewById(R.id.btnFlipCamera)
         btnOrientation = findViewById(R.id.btnOrientation)
+        btnGrid = findViewById(R.id.btnGrid)
         btnTorch = findViewById(R.id.btnTorch)
         btnDimScreen = findViewById(R.id.btnDimScreen)
         btnScanQr = findViewById(R.id.btnScanQr)
@@ -147,7 +151,7 @@ class MainActivity : AppCompatActivity() {
             override fun onSurfaceTextureUpdated(surfaceTexture: SurfaceTexture) {}
         }
 
-        // Pinch-to-zoom on camera preview
+        // Gestures: Pinch to zoom + Tap to focus ring + Double tap to flip camera
         val scaleDetector = ScaleGestureDetector(this, object : ScaleGestureDetector.SimpleOnScaleGestureListener() {
             override fun onScale(detector: ScaleGestureDetector): Boolean {
                 val current = CameraStreamingService.currentZoomRatio
@@ -156,30 +160,58 @@ class MainActivity : AppCompatActivity() {
                 return true
             }
         })
-        previewTextureView.setOnTouchListener { _, event ->
-            scaleDetector.onTouchEvent(event)
-            true
+
+        val gestureDetector = GestureDetector(this, object : GestureDetector.SimpleOnGestureListener() {
+            override fun onSingleTapConfirmed(e: MotionEvent): Boolean {
+                framingOverlay.triggerFocusAnimation(e.x, e.y)
+                previewTextureView.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+                return true
+            }
+
+            override fun onDoubleTap(e: MotionEvent): Boolean {
+                previewTextureView.performHapticFeedback(HapticFeedbackConstants.CONFIRM)
+                CameraStreamingService.switchCamera()
+                return true
+            }
+        })
+
+        val touchListener = View.OnTouchListener { _, event ->
+            val scaleHandled = scaleDetector.onTouchEvent(event)
+            val gestureHandled = gestureDetector.onTouchEvent(event)
+            scaleHandled || gestureHandled || true
         }
+        previewTextureView.setOnTouchListener(touchListener)
+        framingOverlay.setOnTouchListener(touchListener)
 
         btnPauseStream.setOnClickListener {
+            it.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
             val nextState = !CameraStreamingService.isStreamingActive
             CameraStreamingService.setStreamActive(nextState)
             updateUi()
         }
 
         btnResumeFromOverlay.setOnClickListener {
+            it.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
             CameraStreamingService.setStreamActive(true)
             updateUi()
         }
 
         btnOrientation.setOnClickListener {
+            it.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
             val nextMode = when (CameraStreamingService.currentOrientationMode) {
-                CameraStreamingService.OrientationMode.AUTO -> CameraStreamingService.OrientationMode.VERTICAL
-                CameraStreamingService.OrientationMode.VERTICAL -> CameraStreamingService.OrientationMode.HORIZONTAL
-                CameraStreamingService.OrientationMode.HORIZONTAL -> CameraStreamingService.OrientationMode.AUTO
+                OrientationMode.AUTO -> OrientationMode.VERTICAL
+                OrientationMode.VERTICAL -> OrientationMode.HORIZONTAL
+                OrientationMode.HORIZONTAL -> OrientationMode.AUTO
             }
             CameraStreamingService.setOrientationMode(nextMode)
             updateUi()
+        }
+
+        btnGrid.setOnClickListener {
+            it.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+            framingOverlay.isGridEnabled = !framingOverlay.isGridEnabled
+            val color = if (framingOverlay.isGridEnabled) 0xFF60A5FA.toInt() else 0xFF71717A.toInt()
+            btnGrid.iconTint = ColorStateList.valueOf(color)
         }
 
         orientationEventListener = object : OrientationEventListener(this, SensorManager.SENSOR_DELAY_UI) {
@@ -193,26 +225,32 @@ class MainActivity : AppCompatActivity() {
         initFormatToggles()
 
         btnFlipCamera.setOnClickListener {
+            it.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
             CameraStreamingService.switchCamera()
         }
 
         btnTorch.setOnClickListener {
+            it.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
             CameraStreamingService.toggleTorch()
         }
 
         btnDimScreen.setOnClickListener {
+            it.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
             toggleScreenDim()
         }
 
         btnEnterPip.setOnClickListener {
+            it.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
             enterPipMode()
         }
 
         btnOpenSettings.setOnClickListener {
+            it.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
             showSettingsDialog()
         }
 
         btnScanQr.setOnClickListener {
+            it.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
             val options = ScanOptions().apply {
                 setPrompt("Scan OBS Studio QR Code")
                 setBeepEnabled(true)
@@ -415,23 +453,23 @@ class MainActivity : AppCompatActivity() {
         val activeOrient = CameraStreamingService.activeOrientation
         val orientText = if (activeOrient == "vertical") "📱 Vert" else "📺 Horiz"
         tvOrientationBadge.text = when (orientMode) {
-            CameraStreamingService.OrientationMode.AUTO -> "Auto • $orientText"
-            CameraStreamingService.OrientationMode.VERTICAL -> "Vert • $orientText"
-            CameraStreamingService.OrientationMode.HORIZONTAL -> "Horiz • $orientText"
+            OrientationMode.AUTO -> "Auto • $orientText"
+            OrientationMode.VERTICAL -> "Vert • $orientText"
+            OrientationMode.HORIZONTAL -> "Horiz • $orientText"
         }
 
         when (orientMode) {
-            CameraStreamingService.OrientationMode.AUTO -> {
+            OrientationMode.AUTO -> {
                 btnOrientation.text = "Auto"
                 btnOrientation.setIconResource(R.drawable.ic_orientation_auto)
                 btnOrientation.iconTint = ColorStateList.valueOf(0xFF60A5FA.toInt())
             }
-            CameraStreamingService.OrientationMode.VERTICAL -> {
+            OrientationMode.VERTICAL -> {
                 btnOrientation.text = "Vert"
                 btnOrientation.setIconResource(R.drawable.ic_orientation_vert)
                 btnOrientation.iconTint = ColorStateList.valueOf(0xFF34D399.toInt())
             }
-            CameraStreamingService.OrientationMode.HORIZONTAL -> {
+            OrientationMode.HORIZONTAL -> {
                 btnOrientation.text = "Horiz"
                 btnOrientation.setIconResource(R.drawable.ic_orientation_horiz)
                 btnOrientation.iconTint = ColorStateList.valueOf(0xFFFBBF24.toInt())
@@ -445,17 +483,22 @@ class MainActivity : AppCompatActivity() {
         }
 
         val isStreamingActive = CameraStreamingService.isStreamingActive
+        val isStreaming = CameraStreamingService.isStreaming
+        val isConnected = CameraStreamingService.isConnectedToHost
+
         if (isStreamingActive) {
             btnPauseStream.setImageResource(R.drawable.ic_pause)
             pauseOverlay.visibility = View.GONE
-            if (CameraStreamingService.isStreaming) {
+            if (isStreaming && isConnected) {
                 tvStreamBadge.text = "LIVE"
                 tvStreamBadge.setTextColor(0xFF22C55E.toInt())
                 statusDot.setBackgroundColor(0xFF22C55E.toInt())
+                framingOverlay.setBackgroundResource(R.drawable.bg_tally_live)
             } else {
                 tvStreamBadge.text = "STANDBY"
                 tvStreamBadge.setTextColor(0xFF71717A.toInt())
                 statusDot.setBackgroundColor(0xFF71717A.toInt())
+                framingOverlay.setBackgroundResource(R.drawable.bg_tally_idle)
             }
         } else {
             btnPauseStream.setImageResource(R.drawable.ic_play)
@@ -463,6 +506,7 @@ class MainActivity : AppCompatActivity() {
             tvStreamBadge.text = "PAUSED"
             tvStreamBadge.setTextColor(0xFFF59E0B.toInt())
             statusDot.setBackgroundColor(0xFFF59E0B.toInt())
+            framingOverlay.setBackgroundResource(R.drawable.bg_tally_paused)
         }
 
         tvZoomBadge.text = String.format("%.1fx", CameraStreamingService.currentZoomRatio)
